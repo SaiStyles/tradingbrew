@@ -139,7 +139,7 @@ npx @claude-flow/cli@latest doctor --fix
 
 ### Core Development
 `coder`, `reviewer`, `tester`, `planner`, `researcher`
-
+ 
 ### Specialized
 `security-architect`, `security-auditor`, `memory-specialist`, `performance-engineer`
 
