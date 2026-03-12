@@ -1,0 +1,5 @@
+.env*
+.claude-flow/
+node_modules/
+.DS_Store
+*.pem
