@@ -32,7 +32,7 @@ export default function RegisterPage() {
       return
     }
 
-    router.push('/dashboard')
+    router.push('/onboarding')
   }
 
   return (
