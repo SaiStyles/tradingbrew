@@ -7,6 +7,7 @@ import TradeDrawer from './TradeDrawer'
 
 interface TradeDetailClientProps {
   trade: TradeRecord
+  tradingTimezone: string
 }
 
 function FieldRow({ label, value }: { label: string; value: React.ReactNode }) {
@@ -18,7 +19,7 @@ function FieldRow({ label, value }: { label: string; value: React.ReactNode }) {
   )
 }
 
-export default function TradeDetailClient({ trade }: TradeDetailClientProps) {
+export default function TradeDetailClient({ trade, tradingTimezone }: TradeDetailClientProps) {
   const router = useRouter()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [currentTrade, setCurrentTrade] = useState<TradeRecord>(trade)
@@ -60,6 +61,7 @@ export default function TradeDetailClient({ trade }: TradeDetailClientProps) {
   const formatDate = (iso: string | null) => {
     if (!iso) return null
     return new Date(iso).toLocaleString('en-US', {
+      timeZone: tradingTimezone,
       month: 'short',
       day: 'numeric',
       year: 'numeric',

@@ -4,10 +4,10 @@ import Link from 'next/link'
 
 const navItems = [
   { label: 'Dashboard', href: '/dashboard' },
-  { label: 'Journal', href: '/dashboard/journal' },
-  { label: 'Stats', href: '/dashboard/stats' },
-  { label: 'Rules', href: '/dashboard/rules' },
-  { label: 'News', href: '/dashboard/news' },
+  { label: 'Journal', href: '/journal' },
+  { label: 'Stats', href: '/stats' },
+  { label: 'Rules', href: '/rules' },
+  { label: 'News', href: '/news' },
 ]
 
 export default async function DashboardLayout({

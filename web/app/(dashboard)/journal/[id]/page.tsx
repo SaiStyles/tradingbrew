@@ -16,19 +16,27 @@ export default async function TradeDetailPage({ params }: PageProps) {
     redirect('/login')
   }
 
-  const { data, error } = await supabase
-    .from('trades')
-    .select('*')
-    .eq('id', id)
-    .eq('user_id', user.id)
-    .is('deleted_at', null)
-    .single()
+  const [tradeResult, profileResult] = await Promise.all([
+    supabase
+      .from('trades')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .is('deleted_at', null)
+      .single(),
+    supabase
+      .from('users')
+      .select('trading_timezone')
+      .eq('id', user.id)
+      .single(),
+  ])
 
-  if (error || !data) {
+  if (tradeResult.error || !tradeResult.data) {
     notFound()
   }
 
-  const trade = data as TradeRecord
+  const trade = tradeResult.data as TradeRecord
+  const tradingTimezone = (profileResult.data?.trading_timezone as string | null) ?? 'America/New_York'
 
-  return <TradeDetailClient trade={trade} />
+  return <TradeDetailClient trade={trade} tradingTimezone={tradingTimezone} />
 }

@@ -9,13 +9,14 @@ import TradeDrawer from './TradeDrawer'
 // Trade Card
 // ------------------------------------------------------------------
 
-function TradeCard({ trade, onClick }: { trade: TradeRecord; onClick: () => void }) {
+function TradeCard({ trade, onClick, tradingTimezone }: { trade: TradeRecord; onClick: () => void; tradingTimezone: string }) {
   const pnlPositive = (trade.pnl ?? 0) >= 0
   const pnlColor = pnlPositive ? 'text-emerald-400' : 'text-red-400'
   const directionColor = trade.direction === 'long' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'
 
   const formattedDate = trade.opened_at
     ? new Date(trade.opened_at).toLocaleDateString('en-US', {
+        timeZone: tradingTimezone,
         month: 'short',
         day: 'numeric',
         year: 'numeric',
@@ -23,6 +24,7 @@ function TradeCard({ trade, onClick }: { trade: TradeRecord; onClick: () => void
         minute: '2-digit',
       })
     : new Date(trade.created_at).toLocaleDateString('en-US', {
+        timeZone: tradingTimezone,
         month: 'short',
         day: 'numeric',
         year: 'numeric',
@@ -117,9 +119,10 @@ function SkeletonCard() {
 interface JournalClientProps {
   initialTrades: TradeRecord[]
   initialTotal: number
+  tradingTimezone: string
 }
 
-export default function JournalClient({ initialTrades, initialTotal }: JournalClientProps) {
+export default function JournalClient({ initialTrades, initialTotal, tradingTimezone }: JournalClientProps) {
   const router = useRouter()
 
   const [trades, setTrades] = useState<TradeRecord[]>(initialTrades)
@@ -304,6 +307,7 @@ export default function JournalClient({ initialTrades, initialTotal }: JournalCl
                 key={trade.id}
                 trade={trade}
                 onClick={() => handleCardClick(trade)}
+                tradingTimezone={tradingTimezone}
               />
             ))}
           </div>

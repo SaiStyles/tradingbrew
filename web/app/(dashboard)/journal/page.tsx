@@ -14,21 +14,33 @@ export default async function JournalPage() {
   // Server-side initial data fetch
   let initialTrades: TradeRecord[] = []
   let initialTotal = 0
+  let tradingTimezone = 'America/New_York'
 
   try {
-    const { data, count, error } = await supabase
-      .from('trades')
-      .select('*', { count: 'exact' })
-      .eq('user_id', user.id)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-      .range(0, 19)
+    const [tradesResult, profileResult] = await Promise.all([
+      supabase
+        .from('trades')
+        .select('*', { count: 'exact' })
+        .eq('user_id', user.id)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .range(0, 19),
+      supabase
+        .from('users')
+        .select('trading_timezone')
+        .eq('id', user.id)
+        .single(),
+    ])
 
-    if (error) {
-      console.error('Journal page fetch error:', error)
+    if (tradesResult.error) {
+      console.error('Journal page fetch error:', tradesResult.error)
     } else {
-      initialTrades = (data ?? []) as TradeRecord[]
-      initialTotal = count ?? 0
+      initialTrades = (tradesResult.data ?? []) as TradeRecord[]
+      initialTotal = tradesResult.count ?? 0
+    }
+
+    if (profileResult.data?.trading_timezone) {
+      tradingTimezone = profileResult.data.trading_timezone as string
     }
   } catch (err) {
     console.error('Journal page unexpected error:', err)
@@ -38,6 +50,7 @@ export default async function JournalPage() {
     <JournalClient
       initialTrades={initialTrades}
       initialTotal={initialTotal}
+      tradingTimezone={tradingTimezone}
     />
   )
 }
