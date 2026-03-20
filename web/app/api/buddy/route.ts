@@ -1,13 +1,19 @@
-import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
-
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!
-})
+import Anthropic from '@anthropic-ai/sdk'
 
 export async function POST(request: NextRequest) {
+    console.log('FULL KEY START:', process.env.ANTHROPIC_API_KEY?.substring(0, 20))
+  console.log('KEY LENGTH:', process.env.ANTHROPIC_API_KEY?.length)
   try {
+    const apiKey = process.env.ANTHROPIC_API_KEY
+    if (!apiKey) {
+      console.error('ANTHROPIC_API_KEY is not set in environment variables')
+      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 })
+    }
+
+const anthropic = new Anthropic({ apiKey: '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' })
+
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -42,7 +48,7 @@ PERSONALITY:
 - Speak like a trusted senior trader friend
 - Keep responses concise and conversational
 - Never give financial advice or signals
-- Never reference memory directly — make trader FEEL understood not watched
+- Never reference memory directly
 
 TRADER CONTEXT:
 - Trading style: ${profile?.trading_style || 'unknown'}
@@ -51,10 +57,9 @@ TRADER CONTEXT:
 - Active rules: ${rules?.map(r => `${r.rule_type}: ${r.value}`).join(', ') || 'none set'}
 
 RULES:
-- Never say "I remember you said..."
 - Never give signals or financial advice
 - Always empathy first, analysis second
-- Keep responses under 3 sentences unless asked for more
+- Keep responses under 3 sentences
 - Be proactive and ask follow up questions`
 
     const response = await anthropic.messages.create({
@@ -65,11 +70,10 @@ RULES:
     })
 
     const reply = response.content[0].type === 'text' ? response.content[0].text : ''
-
     return NextResponse.json({ reply })
 
-  } catch (error) {
-    console.error('Buddy API error:', error)
+  } catch (error: any) {
+    console.error('Buddy API error:', error?.message)
     return NextResponse.json({ error: 'Something went wrong' }, { status: 500 })
   }
 }

@@ -1,162 +1,126 @@
 # TradingBrew 🎙️
 > Jarvis for traders. Always live, always watching, speaks before you ask.
 
----
-
 ## What This Is
 TradingBrew is a live AI trading companion — not a journal app, not a signal provider.
-It's a voice-native AI buddy that sits with traders during their entire session.
-It proactively speaks, remembers everything, and builds a real relationship over time.
-
----
+Think Tony Stark and Jarvis — the buddy no trader has ever had.
 
 ## What It Is NOT
-- Not a signals provider
-- Not a charting platform
-- Not financial advice — ever
-- Not competing with TradingView or any execution platform
+- Not signals, not charting, not financial advice
+- Not competing with TradingView, Tradovate, Rithmic, MT4/MT5
+- Not a mobile app (lowest priority, maybe never)
+- Not a surveillance tool — never creepy, always warm
 
----
+## Product Architecture
+- Web app (Next.js) = full dashboard, journal, settings, performance
+- Tauri desktop app (later) = lightweight voice companion, always on top
+- Same backend, same codebase — Tauri wraps web frontend
+- PWA as stepping stone before Tauri
 
 ## Tech Stack
-- **Frontend:** Next.js 15 (App Router), TypeScript, TailwindCSS, Framer Motion
-- **Backend:** Next.js API routes (server side), Node.js
-- **Database:** Supabase (PostgreSQL)
-- **Auth:** Supabase Auth
-- **Storage:** Supabase Storage (screenshots)
-- **AI:** Claude API (Sonnet for conversation, Haiku for simple tasks)
-- **Voice:** Web Speech API (free, browser native) — V1
-- **Memory:** Mem0
-- **Deployment:** Vercel
+- Frontend: Next.js 15, TypeScript, TailwindCSS, Framer Motion
+- Backend: Next.js API routes, Node.js
+- Database: Supabase (PostgreSQL)
+- Auth: Supabase Auth
+- Storage: Supabase Storage
+- AI Brain: Claude Haiku (90%) + Sonnet (9%) — never Opus
+- Voice V1: Web Speech API (free) + Web Speech Synthesis (free)
+- Voice V2: Whisper (input) + ElevenLabs (output) — after launch
+- Memory: Mem0 + PGVector
+- Deployment: Vercel
+- Desktop: Tauri (5MB, lighter than Electron)
 
----
+## Buddy Personality System — KEY V1 FEATURE
+- User can choose ANY personality — viral hook
+- Default options: Friendly Mentor, Drill Sergeant, Zen Master, Gordon Gekko
+- Custom: user types anything — "Batman", "Andrew Tate" — Claude adapts
+- Stored in users.buddy_personality
+- V1: personality in text only
+- V2: matching ElevenLabs voice
+- NEVER real celebrity voice cloning — legal risk
+- Buddy name customizable → users.buddy_name
+
+## Voice Design
+- Toggle ON/OFF — never always-on without consent
+- Green pulsing indicator when listening
+- Continuous listening when ON
+- Web Speech reads every response aloud automatically
+
+## Pricing
+- V1 Launch: FREE — build users first
+- V2: Free (30 trades) | Pro $19/month (unlimited + all features)
+
+## Acquisition Target
+- Buyers: Tradovate, Apex, TopStep, TradingView
+- Minimum price: $10M
+- Trigger: 2000+ DAU with retention data
+- Strategy: approach 3-5 buyers simultaneously
 
 ## Project Structure
 ```
 tradingbrew/
-├── web/                    ← Next.js app (ALL frontend work here)
-│   ├── app/                ← App router pages
-│   │   ├── (auth)/         ← Login, register pages
-│   │   ├── (dashboard)/    ← Main app pages
-│   │   │   ├── page.tsx    ← Main dashboard
-│   │   │   ├── journal/    ← Trade journal
-│   │   │   ├── stats/      ← Performance dashboard
-│   │   │   ├── rules/      ← Rules manager
-│   │   │   └── news/       ← News feed
-│   │   └── api/            ← API routes (server side)
-│   │       ├── buddy/      ← AI buddy endpoints
-│   │       ├── trades/     ← Trade CRUD
-│   │       ├── rules/      ← Rules endpoints
-│   │       └── news/       ← News endpoints
-│   ├── components/         ← Reusable UI components
-│   │   ├── buddy/          ← Buddy chat components
-│   │   ├── journal/        ← Journal components
-│   │   ├── ui/             ← Generic UI components
-│   │   └── layout/         ← Layout components
-│   ├── lib/                ← Utilities and helpers
-│   │   ├── supabase/       ← Supabase client
-│   │   ├── claude/         ← Claude API helpers
-│   │   ├── memory/         ← Mem0 integration
-│   │   └── voice/          ← Web Speech API helpers
-│   ├── hooks/              ← Custom React hooks
-│   └── types/              ← TypeScript type definitions
-└── docs/                   ← Full product bible
-    └── sections/           ← 12 section bible docs
+├── web/
+│   ├── app/
+│   │   ├── (auth)/login/ + register/
+│   │   ├── (dashboard)/dashboard/  ← route fix applied
+│   │   ├── onboarding/
+│   │   └── api/buddy/ trades/ rules/ news/ auth/ test/
+│   ├── components/buddy/ journal/ ui/ layout/
+│   ├── lib/supabase/ claude/ memory/ voice/
+│   ├── hooks/
+│   └── types/
+└── docs/sections/
 ```
 
----
+## Database — 15 Tables
+- users (buddy_name, buddy_personality, buddy_voice_id)
+- accounts (NOT prop_firm_accounts — supports prop/personal/live/demo + nickname)
+- trades (includes account_id)
+- screenshots, rules, rule_violations, emotions
+- goals, streaks, milestones, memories, progress
+- news_events, user_news_interactions, sessions
+- DROPPED: prop_firm_accounts, content_feed
 
-## Coding Rules — ALWAYS FOLLOW
-- Always use TypeScript — no `any` types
-- Always use Tailwind for styling — no inline styles
-- Always handle errors with try/catch
-- Always use async/await not .then()
-- Always add loading and error states to UI
-- Never expose ANTHROPIC_API_KEY to frontend
-- Never put sensitive logic in client components
-- Comment any complex logic
-- Use server components by default, client only when needed
-- Dark mode is default — design for dark first
+## Memory Architecture
+- Supabase → FACTS (trades, prices, rules)
+- Mem0 → INSIGHTS (patterns, personality, emotional context)
+- Context packet per conversation: today's data + rules + prop firm + news + top 5 memories
+- Backend orchestrates both — Claude never touches Mem0 directly
 
----
+## Buddy Rules — CRITICAL
+- Never reference memory directly — FEEL understood not watched
+- WRONG: "You mentioned your wife is sick"
+- RIGHT: "How's everything at home?"
+- Never say "I remember" or "your data shows"
+- Empathy first, analysis second
+- Never give signals or financial advice
+- Only surface POSITIVE progress comparisons — never negative
+- Compare trader to THEIR OWN past only — never other users
 
-## Key Files
-- `.env.local` → API keys (never commit this)
-- `lib/supabase/client.ts` → Supabase browser client
-- `lib/supabase/server.ts` → Supabase server client
-- `lib/claude/index.ts` → Claude API wrapper
-- `lib/memory/index.ts` → Mem0 memory wrapper
-- `lib/voice/index.ts` → Web Speech API wrapper
+## Current Build Status
+- ✅ Auth, middleware, onboarding, dashboard, BuddyChat component, Claude API route
+- 🔧 Claude API key env issue (system env var overriding .env.local — fix: hardcode temporarily)
+- ⬜ Buddy chat working, trade journal, news alerts, performance dashboard, Mem0, Tauri
 
----
+## Coding Rules
+- TypeScript always, no any types
+- Tailwind only, no inline styles
+- try/catch always, loading + error states always
+- NEVER expose ANTHROPIC_API_KEY to frontend
+- Initialize Anthropic client INSIDE request handler not module level
+- Dark mode default
+- Server components default, client only when needed
 
-## Database Tables (Supabase)
-- `users` → trader profiles
-- `trades` → all trade records
-- `screenshots` → chart images per trade
-- `rules` → trader defined rules
-- `rule_violations` → tracked violations
-- `prop_firm_accounts` → prop firm settings
-- `emotions` → emotion tags per trade
-- `goals` → weekly process goals
-- `streaks` → discipline streaks
-- `milestones` → achievements
-- `memories` → AI memory storage
-- `news_events` → economic calendar
-- `content_feed` → X/Twitter content
-- `sessions` → trading session records
-
----
-
-## AI Model Routing
-- Simple tasks → Claude Haiku (cheap, fast)
-- Conversations → Claude Sonnet (nuanced, smart)
-- Never use Opus (too expensive)
-
----
-
-## Buddy Personality Rules
-- Warm, never judgmental
-- Never reference memory directly — make trader FEEL understood not watched
-- Never say "I remember you said..."
-- Always empathy first, analysis second
-- Never give financial advice or signals
-- Speak like a trusted senior trader friend
-
----
-
-## Current Build Phase
-**Phase 1 — Week 1**
-- Next.js setup ✅
-- Supabase setup ✅
-- Auth pages (register/login)
-- User onboarding flow
-- Basic dashboard layout
-
----
-
-## Proactive Triggers (Buddy speaks without being asked)
-- News event in 15 minutes
-- Daily loss limit at 75%
-- Max trades limit approaching
-- Trading for 3+ hours straight
-- 2 consecutive losses (revenge trade risk)
-- Perfect execution acknowledgement
-
----
-
-## Voice Pipeline (V1)
-```
-User holds button → Web Speech API listens →
-transcript → Claude API → response text →
-Web Speech Synthesis speaks + shows text
-```
-
----
+## Windows/PowerShell Notes
+- Quotes for paths with parentheses: "app/(auth)"
+- New-Item not touch
+- Git always from root tradingbrew/ folder
+- System env vars override .env.local — dangerous
+- Check: [System.Environment]::GetEnvironmentVariable("KEY", "User")
 
 ## Golden Rules
-1. One feature complete before starting next
-2. Test every feature before moving on
-3. Voice first — everything should be speakable
-4. Never build what's not in the bible
-5. When stuck — refactor, never rebuild from scratch
+1. One feature complete before next
+2. Ship fast, get users, everything follows
+3. Web first, Tauri after validation
+4. Never build outside the bible
+5. Refactor don't rebuild
