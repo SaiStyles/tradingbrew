@@ -30,6 +30,10 @@ Think Tony Stark and Jarvis — the buddy no trader has ever had.
 - Deployment: Vercel
 - Desktop: Tauri (5MB, lighter than Electron)
 
+- AI Agents: 4-agent pipeline (Extractor, Context, Analyst, Buddy)
+- Agent Models: Haiku for Extractor/Context/Analyst, Sonnet for Buddy only
+- Memory: Mem0 (long term insights) + Supabase (hard facts)
+
 ## Buddy Personality System — KEY V1 FEATURE
 - User can choose ANY personality — viral hook
 - Default options: Friendly Mentor, Drill Sergeant, Zen Master, Gordon Gekko
@@ -87,6 +91,46 @@ tradingbrew/
 - Context packet per conversation: today's data + rules + prop firm + news + top 5 memories
 - Backend orchestrates both — Claude never touches Mem0 directly
 
+## Agent Architecture — 4 Agent Pipeline
+
+Every buddy message runs through 4 agents in sequence:
+
+EXTRACTOR (Haiku)
+- Input: raw user message + trading timezone
+- Output: structured JSON fields only
+- No history, no personality, pure extraction
+- Runs on every message
+
+CONTEXT (Haiku)
+- Input: user_id + today's date + instrument
+- Output: context packet containing:
+  → Top 5 Mem0 memories (insights, patterns)
+  → Today's trades summary + P&L
+  → Active rules
+  → Prop firm status
+  → Upcoming economic events (next 2 hours)
+- Runs in parallel with Extractor
+
+ANALYST (Haiku)
+- Input: extracted trade + context packet
+- Output: violations, warnings, patterns
+- Detects: rule violations, revenge trading,
+  overtrading, loss streaks, execution decline
+- Runs only when has_trade = true or 3+ trades today
+- AI judgment only — no hardcoded pattern rules
+
+BUDDY (Sonnet)
+- Input: extracted + context + analyst findings + state
+- Output: one natural reply only, no JSON ever
+- Owns: tone, empathy, personality, timing
+- Never references memory directly
+- Never gives financial advice
+
+Agent principle:
+- AI owns all judgment calls
+- Our code owns all data operations
+- Never hardcode trading behavior logic
+
 ## Buddy Rules — CRITICAL
 - Never reference memory directly — FEEL understood not watched
 - WRONG: "You mentioned your wife is sick"
@@ -98,9 +142,12 @@ tradingbrew/
 - Compare trader to THEIR OWN past only — never other users
 
 ## Current Build Status
-- ✅ Auth, middleware, onboarding, dashboard, BuddyChat component, Claude API route
-- 🔧 Claude API key env issue (system env var overriding .env.local — fix: hardcode temporarily)
-- ⬜ Buddy chat working, trade journal, news alerts, performance dashboard, Mem0, Tauri
+- ✅ Auth, middleware, onboarding, dashboard, BuddyChat component, voice
+- ✅ Trade journal UI, journal API, trade drawer, soft delete
+- 🔧 Buddy agent pipeline rewrite in progress
+     (moving from single call to 4-agent architecture)
+- ⬜ Mem0 integration, news alerts, 
+     performance dashboard, Tauri
 
 ## Coding Rules
 - TypeScript always, no any types
@@ -110,6 +157,11 @@ tradingbrew/
 - Initialize Anthropic client INSIDE request handler not module level
 - Dark mode default
 - Server components default, client only when needed
+- Never hardcode trading behavior or judgment logic
+- All pattern detection → Analyst agent
+- All conversation decisions → Buddy agent
+- All data extraction → Extractor agent
+- Our code = infrastructure only
 
 ## Windows/PowerShell Notes
 - Quotes for paths with parentheses: "app/(auth)"

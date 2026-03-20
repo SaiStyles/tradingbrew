@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls \"/c/Users/saist/tradingbrew/web/app/\\(dashboard\\)/journal/\")",
+      "Bash(npx tsc:*)"
+    ]
+  }
+}
