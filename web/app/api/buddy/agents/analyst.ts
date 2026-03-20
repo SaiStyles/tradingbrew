@@ -21,38 +21,32 @@ export async function runAnalyst(
 
     const anthropic = new Anthropic({ apiKey })
 
+    const userContent = `You are a trading psychology analyst. Return ONLY valid JSON. No explanation.
+
+Trade: ${JSON.stringify({ instrument: pending.instrument, direction: pending.direction, pnl: pending.pnl, emotion_tag: pending.emotion_tag })}
+Last 3 trades: ${JSON.stringify(context.todaysTrades.slice(0, 3).map(t => ({ pnl: t.pnl, execution_score: t.execution_score, emotion_tag: t.emotion_tag })))}
+Today: ${context.todaysTradeCount} trades, $${context.todaysPnL.toFixed(2)} PnL
+Rules: ${JSON.stringify(context.activeRules.slice(0, 5))}
+${context.propFirmAccount ? `Prop account: drawdown ${context.propFirmAccount.current_drawdown}/${context.propFirmAccount.max_drawdown}` : ''}
+${context.memories.length > 0 ? `History:\n${context.memories.slice(0, 3).join('\n')}` : ''}
+
+Detect: rule violations, revenge trading, overtrading, loss streak, execution decline, prop firm risk, positive patterns.
+intervention_type: "revenge_trade"|"overleveraged"|"prop_firm_risk"|"loss_streak"|null
+Return: {"violations":[],"warnings":[],"patterns":[],"positives":[],"intervention_needed":false,"intervention_type":null}`
+
+    console.log('[analyst] input size:', userContent.length, 'chars | model: claude-haiku-4-5-20251001')
+    console.log('[analyst] calling claude...')
+
     const result = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 500,
-      system: `You are a trading psychology analyst.
-Analyze the current trade and session data.
-Identify patterns, rule violations, and warnings.
-Return ONLY valid JSON. No explanation. No conversation.
-
-Current trade being logged: ${JSON.stringify(pending)}
-Today's trades (${context.todaysTradeCount} total, P&L: $${context.todaysPnL.toFixed(2)}): ${JSON.stringify(context.todaysTrades.slice(0, 5))}
-Active rules: ${JSON.stringify(context.activeRules)}
-Prop firm account: ${JSON.stringify(context.propFirmAccount)}
-
-Detect and report:
-1. Rule violations — does this trade break any active rules? (max_trades_day, max_risk_trade, max_daily_loss)
-2. Revenge trading — 2+ consecutive losses before this trade?
-3. Overtrading — at or near daily trade limit?
-4. Loss streak — 3+ losses in a row?
-5. Execution pattern — execution scores declining over last 3 trades?
-6. Prop firm risk — approaching drawdown or daily loss limit?
-7. Positive patterns — win streak, improving execution, best instrument?
-
-Think like a trading psychologist, not an accountant.
-intervention_type must be one of: "revenge_trade", "overleveraged", "prop_firm_risk", "loss_streak", or null
-
-Return this exact structure:
-{"violations":[],"warnings":[],"patterns":[],"positives":[],"intervention_needed":false,"intervention_type":null}`,
       messages: [
-        { role: 'user', content: 'Analyze current trading session.' },
+        { role: 'user', content: userContent },
         { role: 'assistant', content: '{' },
       ],
     })
+
+    console.log('[analyst] claude responded')
 
     const raw = '{' + (result.content[0].type === 'text' ? result.content[0].text : '')
     const cleaned = raw.replace(/```json/g, '').replace(/```/g, '').trim()

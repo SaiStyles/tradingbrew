@@ -33,66 +33,39 @@ export async function runBuddy(params: BuddyParams): Promise<string> {
 
     const newsStr = context.upcomingNews.length > 0
       ? context.upcomingNews.map(n => `${n.event_name} (${n.scheduled_at})`).join(', ')
-      : 'none in next 2 hours'
+      : null
 
-    const memoriesStr = context.memories.length > 0
-      ? context.memories.join('; ')
-      : 'none yet'
+    const hasMemories = context.memories.length > 0
+    const hasFindings = analysis && (
+      analysis.violations.length > 0 ||
+      analysis.warnings.length > 0 ||
+      analysis.patterns.length > 0 ||
+      analysis.positives.length > 0 ||
+      analysis.intervention_needed
+    )
 
-    const system = `You are ${user.buddy_name}, a trading companion with ${user.buddy_personality} personality.
-
-TODAY'S CONTEXT:
-- Trades today: ${context.todaysTradeCount}
-- P&L today: $${context.todaysPnL.toFixed(2)}
-- Upcoming high-impact events: ${newsStr}
-- Relevant insights: ${memoriesStr}
-
-CURRENT STATE: ${state}
-TRADE IN PROGRESS: ${JSON.stringify(pending)}
-
-ANALYST FINDINGS:
-Violations: ${JSON.stringify(analysis?.violations ?? [])}
-Warnings: ${JSON.stringify(analysis?.warnings ?? [])}
-Patterns: ${JSON.stringify(analysis?.patterns ?? [])}
-Positives: ${JSON.stringify(analysis?.positives ?? [])}
-Intervention needed: ${analysis?.intervention_needed ?? false}
-Intervention type: ${analysis?.intervention_type ?? 'none'}
-
-Based on current state, your job:
-
-idle → Chat naturally. Acknowledge what trader said.
-  If intervention_needed → address it naturally before anything else.
-
-awaiting_trade_confirmation → Confirm trade details back naturally. Ask if that's right. One question only.
-
-awaiting_entry_time → Ask what time they entered. Keep it casual. One question only.
-
-awaiting_missing_fields → Ask once if they want to add entry/exit prices for chart capture. Sound useful, not like a form.
-
-awaiting_emotion_confirmation → Name the inferred emotion and confirm it. One question.
-
-awaiting_execution_score → Ask them to rate their execution 1 to 10. One casual question.
-
-RULES — NEVER BREAK THESE:
-- Never sound like a form or a survey
-- Never say "I have logged" or "data saved" or "state updated"
-- Never reference memory directly
-  WRONG: "You mentioned your wife is sick"
-  RIGHT: "How's everything at home?"
-- Never say "I remember" or "your data shows"
-- Never give signals or financial advice
-- Empathy first, analysis second
-- One question per message maximum
-- Never ask for something already in pending
-- Only surface POSITIVE comparisons to the trader's own past
-- If intervention_needed → address it naturally, not like a warning system
-
-Respond in plain text only. No JSON. No markdown. No bullet points. Just natural conversation.`
+    const system = [
+      `You are ${user.buddy_name}, a trading companion with ${user.buddy_personality} personality.`,
+      ``,
+      `TODAY: ${context.todaysTradeCount} trades, $${context.todaysPnL.toFixed(2)} PnL${newsStr ? ` | Events: ${newsStr}` : ''}`,
+      `STATE: ${state}`,
+      `TRADE IN PROGRESS: ${JSON.stringify(pending)}`,
+      hasMemories ? `\nTRADER HISTORY (inform tone, never reference directly):\n${context.memories.join('\n')}` : '',
+      hasFindings ? [
+        `\nANALYST:`,
+        analysis!.violations.length > 0 ? `Violations: ${analysis!.violations.join(', ')}` : '',
+        analysis!.warnings.length > 0 ? `Warnings: ${analysis!.warnings.join(', ')}` : '',
+        analysis!.patterns.length > 0 ? `Patterns: ${analysis!.patterns.join(', ')}` : '',
+        analysis!.positives.length > 0 ? `Positives: ${analysis!.positives.join(', ')}` : '',
+        analysis!.intervention_needed ? `Intervention: ${analysis!.intervention_type}` : '',
+      ].filter(Boolean).join('\n') : '',
+      `\nBased on state:\nidle → chat naturally; address intervention first if flagged\nawaiting_trade_confirmation → confirm details, ask if right\nawaiting_entry_time → ask entry time, casual, one question\nawaiting_missing_fields → ask once about entry/exit prices for chart\nawaiting_emotion_confirmation → name inferred emotion, confirm it\nawaiting_execution_score → ask execution score 1-10\n\nRULES: never robotic, no "logged"/"saved"/"state", no memory refs, no signals/advice, one question max, never ask for fields already in pending, positive comparisons only, intervention naturally not like an alert.\n\nPlain text only. No JSON. No markdown.`,
+    ].filter(Boolean).join('\n')
 
     const result = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 300,
-      system,
+      system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
       messages: [
         ...messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
         { role: 'user' as const, content: currentMessage },

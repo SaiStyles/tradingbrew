@@ -6,6 +6,7 @@ import { runContext } from './agents/context'
 import { runAnalyst } from './agents/analyst'
 import { runBuddy } from './agents/buddy'
 import { getISOOffset, getTodayInTz, nowInTz } from './timezone'
+import { writeMemory } from '@/lib/memory/mem0'
 
 // ------------------------------------------------------------------
 // Types
@@ -25,6 +26,8 @@ interface SessionState {
   off_topic_count: number
   screenshot_eligible: boolean
   messages: ChatMessage[]
+  cached_memories: string[]
+  memories_cached_at: string // ISO timestamp, empty = never cached
 }
 
 // ------------------------------------------------------------------
@@ -38,6 +41,8 @@ function defaultSession(): SessionState {
     off_topic_count: 0,
     screenshot_eligible: false,
     messages: [],
+    cached_memories: [],
+    memories_cached_at: '',
   }
 }
 
@@ -205,6 +210,8 @@ export async function POST(request: NextRequest) {
           off_topic_count: (raw.off_topic_count as number) ?? 0,
           screenshot_eligible: (raw.screenshot_eligible as boolean) ?? false,
           messages: (raw.messages as ChatMessage[]) ?? [],
+          cached_memories: (raw.cached_memories as string[]) ?? [],
+          memories_cached_at: (raw.memories_cached_at as string) ?? '',
         }
       } catch {
         session = defaultSession()
@@ -214,10 +221,36 @@ export async function POST(request: NextRequest) {
     console.log('[buddy] state:', session.state, '| pending:', JSON.stringify(session.pending_trade_data))
 
     // Step 2: Extractor + Context in parallel
+    // Memories cache: valid if non-empty AND under 5 minutes old AND no trade about to save
+    const FIVE_MIN = 5 * 60 * 1000
+    const cacheAge = session.memories_cached_at
+      ? Date.now() - new Date(session.memories_cached_at).getTime()
+      : Infinity
+    const memoryCacheValid =
+      session.cached_memories.length > 0 &&
+      cacheAge < FIVE_MIN &&
+      !isReadyToSave(session.pending_trade_data)
+    const cachedMemories = memoryCacheValid ? session.cached_memories : undefined
+
+    const EXTRACTOR_EMPTY: ExtractedData = {
+      instrument: null, direction: null, pnl: null,
+      opened_at: null, closed_at: null,
+      entry_price: null, exit_price: null,
+      stop_loss: null, position_size: null,
+      emotion: null, execution_score: null,
+      followed_plan: null, confirmed: false,
+      declined: false, has_trade: false,
+    }
+
+    const t0 = Date.now()
     const [extracted, context] = await Promise.all([
-      runExtractor(message, tradingTimezone),
-      runContext(user.id, tradingTimezone),
+      Promise.race([
+        runExtractor(message, tradingTimezone),
+        new Promise<ExtractedData>(resolve => setTimeout(() => resolve(EXTRACTOR_EMPTY), 2000)),
+      ]),
+      runContext(user.id, tradingTimezone, cachedMemories),
     ])
+    console.log('[agents] extractor + context:', Date.now() - t0, 'ms', memoryCacheValid ? '(mem cached)' : '(mem fresh)')
 
     // Step 3: Merge extracted into pending
     const pending = mergeExtracted(session.pending_trade_data, extracted)
@@ -225,13 +258,19 @@ export async function POST(request: NextRequest) {
     // Step 4: State transition
     const newSession = nextState(session, extracted, pending)
 
-    // Step 5: Analyst — only when there's trade activity
+    // Step 5: Analyst with 2000ms timeout — Buddy never waits longer
     const shouldRunAnalyst = extracted.has_trade || context.todaysTradeCount >= 3
+    const t1 = Date.now()
     const analysis = shouldRunAnalyst
-      ? await runAnalyst(extracted, context, pending)
+      ? await Promise.race([
+          runAnalyst(extracted, context, pending),
+          new Promise<null>(resolve => setTimeout(() => resolve(null), 2000)),
+        ])
       : null
+    if (shouldRunAnalyst) console.log('[agents] analyst:', Date.now() - t1, 'ms', analysis === null ? '(timed out)' : '')
 
     // Step 6: Buddy — plain text reply
+    const t2 = Date.now()
     const reply = await runBuddy({
       state: newSession.state,
       pending: newSession.pending_trade_data,
@@ -246,6 +285,8 @@ export async function POST(request: NextRequest) {
       },
       currentMessage: message,
     })
+    console.log('[agents] buddy:', Date.now() - t2, 'ms')
+    console.log('[agents] total:', Date.now() - t0, 'ms')
 
     // Step 7: Update message history — clear after save to prevent context bleed
     const shouldSaveTrade = isReadyToSave(pending)
@@ -293,6 +334,19 @@ export async function POST(request: NextRequest) {
         } else {
           console.log('[buddy] trade saved:', insertedTrade?.id)
           savedTrade = insertedTrade
+
+          // WRITE 1 — trade insight (fire-and-forget)
+          const t = insertedTrade
+          if (t) {
+            const tradeInsight = `Trader closed ${t.instrument} ${t.direction} with ${(t.pnl ?? 0) > 0 ? '+' : ''}${t.pnl} PnL. Execution score: ${t.execution_score}/10. Emotion: ${t.emotion_tag}. Followed plan: ${t.followed_plan ? 'yes' : 'no'}. Entry: ${t.opened_at}. Exit: ${t.closed_at}.${t.incomplete ? ' Trade data incomplete.' : ''}`
+            writeMemory(user.id, tradeInsight).catch(e => console.log('[mem0] write error:', e))
+          }
+
+          // WRITE 2 — session insight (fire-and-forget)
+          if (context.todaysTradeCount > 0) {
+            const sessionInsight = `Trading session summary: Trades today: ${context.todaysTradeCount}. Total PnL: ${context.todaysPnL > 0 ? '+' : ''}${context.todaysPnL.toFixed(2)}. Analyst findings: ${analysis?.patterns?.join(', ') || 'none'}. Warnings: ${analysis?.warnings?.join(', ') || 'none'}. Violations: ${analysis?.violations?.join(', ') || 'none'}.`
+            writeMemory(user.id, sessionInsight).catch(e => console.log('[mem0] write error:', e))
+          }
         }
       } catch (e) {
         console.error('[buddy] trade save exception:', e)
@@ -300,9 +354,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 9: Persist session state
+    // After trade save → clear memory cache so next message fetches fresh insights
+    const latestMemories = context.memories
     const finalSession: SessionState = shouldSaveTrade
-      ? { state: 'idle', pending_trade_data: {}, off_topic_count: 0, screenshot_eligible: false, messages: [] }
-      : { ...newSession, messages: updatedMessages }
+      ? { state: 'idle', pending_trade_data: {}, off_topic_count: 0, screenshot_eligible: false, messages: [], cached_memories: [], memories_cached_at: '' }
+      : { ...newSession, messages: updatedMessages, cached_memories: latestMemories, memories_cached_at: new Date().toISOString() }
 
     const sessionPayload = {
       state: finalSession.state,
@@ -310,6 +366,8 @@ export async function POST(request: NextRequest) {
       off_topic_count: finalSession.off_topic_count,
       screenshot_eligible: finalSession.screenshot_eligible,
       messages: finalSession.messages,
+      cached_memories: finalSession.cached_memories,
+      memories_cached_at: finalSession.memories_cached_at,
     }
 
     try {

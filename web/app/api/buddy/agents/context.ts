@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import type { ContextPacket, TradeRecord, AccountRecord, NewsEvent } from '@/types/trade'
 import { getTodayInTz, getISOOffset } from '../timezone'
+import { readMemories } from '@/lib/memory/mem0'
 
 const EMPTY: ContextPacket = {
   todaysTrades: [],
@@ -14,7 +15,8 @@ const EMPTY: ContextPacket = {
 
 export async function runContext(
   userId: string,
-  tradingTimezone: string
+  tradingTimezone: string,
+  cachedMemories?: string[]
 ): Promise<ContextPacket> {
   try {
     const supabase = await createClient()
@@ -25,7 +27,12 @@ export async function runContext(
     const todayStart = `${todayDate}T00:00:00${offset}`
     const twoHoursFromNow = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
 
-    const [tradesResult, rulesResult, accountResult, newsResult] = await Promise.all([
+    // Use cached memories if available — skip Mem0 round-trip
+    const memoriesPromise = cachedMemories !== undefined
+      ? Promise.resolve(cachedMemories)
+      : readMemories(userId, 'trading patterns behavior psychology emotion')
+
+    const [tradesResult, rulesResult, accountResult, newsResult, memories] = await Promise.all([
       supabase
         .from('trades')
         .select('*')
@@ -53,6 +60,7 @@ export async function runContext(
         .lte('scheduled_at', twoHoursFromNow)
         .eq('impact', 'high')
         .order('scheduled_at', { ascending: true }),
+      memoriesPromise,
     ])
 
     if (tradesResult.error) console.error('[context] trades fetch error:', tradesResult.error)
@@ -69,7 +77,7 @@ export async function runContext(
       activeRules: (rulesResult.data ?? []) as Array<{ rule_type: string; value: number }>,
       propFirmAccount: (accountResult.data as AccountRecord | null) ?? null,
       upcomingNews: (newsResult.data ?? []) as NewsEvent[],
-      memories: [], // Mem0 stub — will be wired when integrated
+      memories,
     }
   } catch (e) {
     console.error('[context] unexpected error:', e)
