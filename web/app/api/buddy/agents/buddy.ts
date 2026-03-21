@@ -43,12 +43,15 @@ export async function runBuddy(params: BuddyParams): Promise<string> {
       analysis.positives.length > 0 ||
       analysis.intervention_needed
     ) ? [
-      analysis.violations.length > 0 ? `Violations: ${analysis.violations.join(', ')}` : '',
       analysis.warnings.length > 0 ? `Warnings: ${analysis.warnings.join(', ')}` : '',
       analysis.patterns.length > 0 ? `Patterns: ${analysis.patterns.join(', ')}` : '',
       analysis.positives.length > 0 ? `Positives: ${analysis.positives.join(', ')}` : '',
       analysis.intervention_needed ? `INTERVENTION NEEDED: ${analysis.intervention_type}` : '',
     ].filter(Boolean).join('\n') : 'No findings yet'
+
+    const violationsStr = analysis?.violations && analysis.violations.length > 0
+      ? analysis.violations.map(v => `- ${v.reasoning} (severity: ${v.severity})`).join('\n')
+      : 'none'
 
     const memoriesStr = context.memories.length > 0
       ? context.memories.join('\n')
@@ -70,6 +73,21 @@ TODAY'S CONTEXT:
 
 ANALYST FINDINGS:
 ${analysisStr}
+
+RULE VIOLATIONS:
+${violationsStr}
+
+If violations exist, address them in your reply. Do this in character — never enumerate rules,
+never say "you violated rule X".
+
+Instead, speak as the trader's companion with ${user.buddy_personality} personality:
+- Reference the spirit of what they committed to
+- Acknowledge what you're seeing in their session
+- Let them decide what to do — never command
+- One mention is enough — don't dwell on it
+
+If severity is "warning": softer, curious tone
+If severity is "violation": clearer, more present
 
 PAST HISTORY (background only — today is ${tradingDate}, anything older is previous session context only):
 ${memoriesStr}

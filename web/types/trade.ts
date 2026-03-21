@@ -42,18 +42,43 @@ export interface NewsEvent {
   currency: string | null
 }
 
+export interface Rule {
+  id: string
+  raw_text: string
+  is_active: boolean
+  created_at: string
+  last_triggered_at: string | null
+}
+
+export interface RuleViolation {
+  id: string
+  rule_id: string
+  trade_id: string | null
+  session_id: string | null
+  analyst_reasoning: string | null
+  created_at: string
+}
+
+// Structured violation finding from the Analyst agent
+export interface RuleViolationFinding {
+  rule_id: string
+  severity: 'warning' | 'violation'
+  reasoning: string
+}
+
 export interface ContextPacket {
   todaysTrades: TradeRecord[]
   todaysPnL: number
   todaysTradeCount: number
   activeRules: Array<{ rule_type: string; value: number }>
+  active_rules: Array<{ id: string; raw_text: string }>
   propFirmAccount: AccountRecord | null
   upcomingNews: NewsEvent[]
   memories: string[]
 }
 
 export interface AnalystReport {
-  violations: string[]
+  violations: RuleViolationFinding[]
   warnings: string[]
   patterns: string[]
   positives: string[]

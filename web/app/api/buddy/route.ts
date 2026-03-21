@@ -174,6 +174,42 @@ export async function POST(request: NextRequest) {
     const analysis = await Promise.race([analysisPromise, Promise.resolve(null)])
     if (shouldRunAnalyst) console.log('[agents] analyst:', Date.now() - t1, 'ms', analysis === null ? '(still running / skipped)' : '(done)')
 
+    // Step 6b: Write rule violations — fire-and-forget, never block Buddy
+    if (analysis && analysis.violations && analysis.violations.length > 0) {
+      const currentSessionId = sessionResult.data?.id ?? null
+      const existingCount = (sessionResult.data as { violation_count?: number } | null)?.violation_count ?? 0
+
+      const violationInserts = analysis.violations.map(v =>
+        supabase.from('rule_violations').insert({
+          rule_id: v.rule_id,
+          user_id: user.id,
+          trade_id: null,
+          session_id: currentSessionId,
+          analyst_reasoning: v.reasoning,
+        })
+      )
+
+      const triggerUpdates = analysis.violations.map(v =>
+        supabase.from('rules')
+          .update({ last_triggered_at: new Date().toISOString() })
+          .eq('id', v.rule_id)
+      )
+
+      const writes: Promise<unknown>[] = [...violationInserts, ...triggerUpdates]
+
+      if (currentSessionId) {
+        writes.push(
+          supabase.schema('public').from('sessions')
+            .update({ violation_count: existingCount + analysis.violations.length })
+            .eq('id', currentSessionId)
+        )
+      }
+
+      Promise.all(writes).catch(err =>
+        console.error('[violations] write failed:', err)
+      )
+    }
+
     // Step 7: Update conversation history
     const updatedMessages: ChatMessage[] = [
       ...session.messages,
@@ -236,7 +272,7 @@ export async function POST(request: NextRequest) {
 
           // WRITE 2 — session insight (fire-and-forget)
           if (context.todaysTradeCount > 0) {
-            const sessionInsight = `${tradingDate}: Session summary. Trades: ${context.todaysTradeCount}. Total PnL: ${context.todaysPnL > 0 ? '+' : ''}$${context.todaysPnL.toFixed(2)}. Patterns: ${analysis?.patterns?.join(', ') || 'none'}. Warnings: ${analysis?.warnings?.join(', ') || 'none'}. Violations: ${analysis?.violations?.join(', ') || 'none'}.`
+            const sessionInsight = `${tradingDate}: Session summary. Trades: ${context.todaysTradeCount}. Total PnL: ${context.todaysPnL > 0 ? '+' : ''}$${context.todaysPnL.toFixed(2)}. Patterns: ${analysis?.patterns?.join(', ') || 'none'}. Warnings: ${analysis?.warnings?.join(', ') || 'none'}. Violations: ${analysis?.violations?.map(v => v.reasoning).join(', ') || 'none'}.`
             writeMemory(user.id, sessionInsight).catch(e => console.log('[mem0] write error:', e))
           }
         }

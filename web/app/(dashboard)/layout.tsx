@@ -20,6 +20,18 @@ export default async function DashboardLayout({
 
   if (!user) redirect('/login')
 
+  // Read violation count from latest session for sidebar badge
+  const { data: latestSession } = await supabase
+    .schema('public')
+    .from('sessions')
+    .select('violation_count')
+    .eq('user_id', user.id)
+    .order('started_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const violationCount = (latestSession as { violation_count?: number } | null)?.violation_count ?? 0
+
   return (
     <div className="min-h-screen bg-black flex">
       <aside className="w-64 bg-zinc-900 border-r border-zinc-800 flex flex-col p-4">
@@ -31,9 +43,12 @@ export default async function DashboardLayout({
             <Link
               key={item.href}
               href={item.href}
-              className="text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg px-3 py-2 text-sm transition"
+              className="flex items-center justify-between text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg px-3 py-2 text-sm transition"
             >
-              {item.label}
+              <span>{item.label}</span>
+              {item.href === '/rules' && violationCount > 0 && (
+                <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" title={`${violationCount} rule violation${violationCount > 1 ? 's' : ''} detected`} />
+              )}
             </Link>
           ))}
         </nav>

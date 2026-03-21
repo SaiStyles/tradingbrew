@@ -8,6 +8,7 @@ const EMPTY: ContextPacket = {
   todaysPnL: 0,
   todaysTradeCount: 0,
   activeRules: [],
+  active_rules: [],
   propFirmAccount: null,
   upcomingNews: [],
   memories: [],
@@ -43,9 +44,10 @@ export async function runContext(
         .limit(10),
       supabase
         .from('rules')
-        .select('rule_type, value')
+        .select('id, raw_text, rule_type, value')
         .eq('user_id', userId)
-        .eq('is_active', true),
+        .eq('is_active', true)
+        .is('deleted_at', null),
       supabase
         .from('accounts')
         .select('*')
@@ -70,11 +72,16 @@ export async function runContext(
     const trades = (tradesResult.data ?? []) as TradeRecord[]
     const pnl = trades.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0)
 
+    const rulesData = rulesResult.data ?? []
+
     return {
       todaysTrades: trades,
       todaysPnL: pnl,
       todaysTradeCount: trades.length,
-      activeRules: (rulesResult.data ?? []) as Array<{ rule_type: string; value: number }>,
+      activeRules: rulesData as Array<{ rule_type: string; value: number }>,
+      active_rules: rulesData
+        .filter(r => r.raw_text)
+        .map(r => ({ id: r.id as string, raw_text: r.raw_text as string })),
       propFirmAccount: (accountResult.data as AccountRecord | null) ?? null,
       upcomingNews: (newsResult.data ?? []) as NewsEvent[],
       memories,

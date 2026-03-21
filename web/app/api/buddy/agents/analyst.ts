@@ -25,8 +25,8 @@ export async function runAnalyst(
     const todaysTrades = context.todaysTrades.length > 0
       ? JSON.stringify(context.todaysTrades.map(t => ({ instrument: t.instrument, direction: t.direction, pnl: t.pnl, execution_score: t.execution_score, emotion_tag: t.emotion_tag, opened_at: t.opened_at, closed_at: t.closed_at })))
       : 'No trades yet today.'
-    const activeRules = context.activeRules.length > 0
-      ? context.activeRules.slice(0, 5).map(r => r.description ?? r.name).join('\n')
+    const activeRules = context.active_rules.length > 0
+      ? context.active_rules.map(r => `- ${r.raw_text} (id: ${r.id})`).join('\n')
       : 'No active rules.'
     const propFirmAccount = context.propFirmAccount
       ? `Drawdown: ${context.propFirmAccount.current_drawdown}/${context.propFirmAccount.max_drawdown}`
@@ -40,8 +40,17 @@ export async function runAnalyst(
 TODAY'S SESSION:
 ${todaysTrades}
 
-ACTIVE RULES:
+ACTIVE TRADER RULES:
 ${activeRules}
+
+For each rule above, reason about whether the current trade data, session behavior, or emotional
+state suggests this rule is being broken or is at risk of being broken.
+
+Rules are personal commitments, not formulas. Interpret them with judgment:
+- "after 2 losses" means consider the loss streak
+- "when frustrated" means consider emotion field
+- "first 2 hours" means consider trade timestamps
+- Ambiguous rules → err on the side of surfacing
 
 PROP FIRM ACCOUNT:
 ${propFirmAccount}
@@ -61,8 +70,13 @@ Trust your judgment completely.
 You are not checking boxes.
 You are reading a human being.
 
-Return ONLY valid JSON:
-{"violations":[],"warnings":[],"patterns":[],"positives":[],"intervention_needed":false,"intervention_type":null}
+Return ONLY valid JSON with these exact fields:
+{"violations":[{"rule_id":"<id from rules above>","severity":"warning","reasoning":"One sentence. What specifically triggered this."}],"warnings":[],"patterns":[],"positives":[],"intervention_needed":false,"intervention_type":null}
+
+violations: array of rule violations (use rule_id from ACTIVE TRADER RULES above). Empty array if none.
+severity: "warning" if at risk, "violation" if clearly broken.
+reasoning: write as if explaining to a coach, not a system. Never say "rule violated".
+warnings: general behavioral/psychological concerns not tied to a specific rule.
 intervention_type: string describing the intervention type, or null if none needed`
 
     console.log('[analyst] input size:', userContent.length, 'chars | model: claude-haiku-4-5-20251001')
