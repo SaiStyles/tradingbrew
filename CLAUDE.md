@@ -178,11 +178,12 @@ SAVE DETECTOR (Haiku)
 - ✅ Shared JSON parser across all agents
 - ✅ Background Analyst (non-blocking)
 - ✅ Trading timezone support
-- ⬜ Settings page (timezone, buddy name, personality)
+- ✅ Settings page (timezone, buddy name, 
+     personality, account setup, notifications)
 - ⬜ Rules manager
 - ⬜ Performance dashboard
 - ⬜ News alerts
-- ⬜ Tauri desktop app
+- ⬜ Tauri desktop app 
 
 ## Coding Rules
 - TypeScript always, no any types
