@@ -47,9 +47,10 @@ Return this exact JSON structure:
 Field rules:
 - instrument: ticker symbol only (NQ, ES, AAPL, etc.)
 - direction: "long" or "short" only, null if not mentioned
-- pnl: number (positive or negative), null if not mentioned
+- pnl: number (positive or negative), null if not mentioned. If the trader explicitly states their PnL ('made $400', 'lost $200', 'up 400') — that is the PnL. Never calculate or override it from entry/exit prices. Stated PnL always wins. Only calculate PnL if trader never mentioned it at all.
 - emotion: one of: confident, hesitant, FOMO, revenge, bored, calm, frustrated, euphoric
 - execution_score: 1-10 integer, null if not mentioned
+- followed_plan: true when trader says anything like 'i did', 'yes', 'followed it', 'stuck to the plan', 'disciplined', 'as planned'. false when trader says 'deviated', 'went off plan', 'shouldn't have', 'revenge', 'impulsive'. Use judgment — don't require exact phrases. null if not mentioned.
 - confirmed: true if user is agreeing/confirming in any natural way
 - declined: true if user is disagreeing, skipping, or saying no
 - has_trade: true if message describes a completed or in-progress trade`,
