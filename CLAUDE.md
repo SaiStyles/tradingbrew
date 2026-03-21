@@ -23,16 +23,19 @@ Think Tony Stark and Jarvis — the buddy no trader has ever had.
 - Database: Supabase (PostgreSQL)
 - Auth: Supabase Auth
 - Storage: Supabase Storage
-- AI Brain: Claude Haiku (90%) + Sonnet (9%) — never Opus
+- AI Agents: 4-agent pipeline + SaveDetector
+  → Extractor (Haiku) — field extraction
+  → Context (Haiku) — data fetching + Mem0 retrieval
+  → Analyst (Haiku) — pattern detection, background
+  → Buddy (Sonnet) — natural conversation, plain text
+  → SaveDetector (Haiku) — save decision
+- Agent Parser: shared lib/claude/parser.ts
+- Memory: Mem0 (long term insights, patterns)
+- Database Facts: Supabase PostgreSQL (trades, rules, accounts)
 - Voice V1: Web Speech API (free) + Web Speech Synthesis (free)
 - Voice V2: Whisper (input) + ElevenLabs (output) — after launch
-- Memory: Mem0 + PGVector
 - Deployment: Vercel
-- Desktop: Tauri (5MB, lighter than Electron)
-
-- AI Agents: 4-agent pipeline (Extractor, Context, Analyst, Buddy)
-- Agent Models: Haiku for Extractor/Context/Analyst, Sonnet for Buddy only
-- Memory: Mem0 (long term insights) + Supabase (hard facts)
+- Desktop: Tauri (5MB, lighter than Electron) — V2
 
 ## Buddy Personality System — KEY V1 FEATURE
 - User can choose ANY personality — viral hook
@@ -131,6 +134,17 @@ Agent principle:
 - Our code owns all data operations
 - Never hardcode trading behavior logic
 
+SAVE DETECTOR (Haiku)
+- Input: full conversation history + buddy reply
+- Output: save_trade boolean + trade_data
+- One job: detect if minimum fields exist
+- Minimum fields: instrument, direction, pnl, 
+  opened_at, emotion, execution_score
+- Never judges data quality
+- Never detects patterns
+- Duplicate prevention via [SYSTEM: Trade already saved] 
+  messages in conversation history
+
 ## Buddy Rules — CRITICAL
 - Never reference memory directly — FEEL understood not watched
 - WRONG: "You mentioned your wife is sick"
@@ -140,14 +154,35 @@ Agent principle:
 - Never give signals or financial advice
 - Only surface POSITIVE progress comparisons — never negative
 - Compare trader to THEIR OWN past only — never other users
+- Reflection feels like therapy, not homework
+- Never force trade completion — always offer a choice
+- After a bad trade, Buddy reads the room first
+- Discipline comes from relationship, not locked features
+- Gentle nudge always beats a mandatory gate
+- Collect fields in order: instrument → direction → 
+  pnl → times → prices → emotion → followed_plan 
+  → execution_score (last, triggers save)
 
 ## Current Build Status
-- ✅ Auth, middleware, onboarding, dashboard, BuddyChat component, voice
-- ✅ Trade journal UI, journal API, trade drawer, soft delete
-- 🔧 Buddy agent pipeline rewrite in progress
-     (moving from single call to 4-agent architecture)
-- ⬜ Mem0 integration, news alerts, 
-     performance dashboard, Tauri
+- ✅ Auth, middleware, onboarding, dashboard, 
+     BuddyChat component, voice
+- ✅ Trade journal UI, journal API, trade drawer, 
+     soft delete, incomplete badge
+- ✅ 4-agent pipeline live (Extractor, Context, 
+     Analyst, Buddy + SaveDetector)
+- ✅ Mem0 integration (writes + reads, dated memories)
+- ✅ Session management (daily reset, caching)
+- ✅ Conversation history (20 messages)
+- ✅ Trades saving with all fields
+- ✅ Duplicate prevention via system messages
+- ✅ Shared JSON parser across all agents
+- ✅ Background Analyst (non-blocking)
+- ✅ Trading timezone support
+- ⬜ Settings page (timezone, buddy name, personality)
+- ⬜ Rules manager
+- ⬜ Performance dashboard
+- ⬜ News alerts
+- ⬜ Tauri desktop app
 
 ## Coding Rules
 - TypeScript always, no any types
