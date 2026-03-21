@@ -71,6 +71,12 @@ export type EmotionTag =
   | 'frustrated'
   | 'euphoric'
 
+export interface BuddyResponse {
+  reply: string
+  save_trade: boolean
+  trade_data: Partial<TradeRecord> | null
+}
+
 export interface TradeRecord {
   id: string
   user_id: string
