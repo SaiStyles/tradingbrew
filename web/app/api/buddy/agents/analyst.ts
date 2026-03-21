@@ -93,8 +93,11 @@ intervention_type: string describing the intervention type, or null if none need
 
     console.log('[analyst] claude responded')
 
-    const raw = result.content[0].type === 'text' ? result.content[0].text : ''
+    // Prepend '{' because we prefilled the assistant turn with '{' — Claude's response starts after it
+    const raw = result.content[0].type === 'text' ? '{' + result.content[0].text : ''
+    console.log('[analyst] raw output:', raw.slice(0, 500))
     const parsed = parseJSON<AnalystReport>(raw)
+    console.log('[analyst] parsed violations:', JSON.stringify(parsed?.violations))
     if (!parsed) return { ...EMPTY }
     return parsed
   } catch (e) {

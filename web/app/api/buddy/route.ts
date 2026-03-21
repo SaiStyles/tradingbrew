@@ -128,29 +128,31 @@ export async function POST(request: NextRequest) {
     ])
     console.log('[agents] extractor + context:', Date.now() - t0, 'ms', memoryCacheValid ? '(mem cached)' : '(mem fresh)')
 
-    // Step 3: Fire Analyst in background — no await, never blocks Buddy
+    // Step 3+4: Run Analyst and Buddy in parallel — both start now, both awaited
     const shouldRunAnalyst = extracted.has_trade || context.todaysTradeCount >= 3
     const t1 = Date.now()
-    const analysisPromise = shouldRunAnalyst
-      ? runAnalyst(extracted, context, {}).catch(() => null)
-      : Promise.resolve(null)
 
-    // Step 4: Run Buddy → plain text reply
-    const t2 = Date.now()
-    const buddyReply = await runBuddy({
-      message,
-      extracted,
-      context,
-      analysis: session.last_analysis ?? null,
-      messages: session.messages,
-      tradingDate,
-      user: {
-        buddy_name: (profile?.buddy_name as string | null) ?? 'Brew',
-        buddy_personality: (profile?.buddy_personality as string | null) ?? 'Friendly Mentor',
-        trading_timezone: tradingTimezone,
-      },
-    })
-    console.log('[agents] buddy:', Date.now() - t2, 'ms')
+    const [buddyReply, analysis] = await Promise.all([
+      runBuddy({
+        message,
+        extracted,
+        context,
+        analysis: session.last_analysis ?? null,
+        messages: session.messages,
+        tradingDate,
+        user: {
+          buddy_name: (profile?.buddy_name as string | null) ?? 'Brew',
+          buddy_personality: (profile?.buddy_personality as string | null) ?? 'Friendly Mentor',
+          trading_timezone: tradingTimezone,
+        },
+      }),
+      shouldRunAnalyst
+        ? runAnalyst(extracted, context, {}).catch(() => null)
+        : Promise.resolve(null),
+    ])
+    console.log('[agents] buddy + analyst parallel:', Date.now() - t1, 'ms')
+    console.log('[debug] shouldRunAnalyst:', shouldRunAnalyst, '| has_trade:', extracted.has_trade, '| todaysTradeCount:', context.todaysTradeCount)
+    console.log('[debug] analysis result:', JSON.stringify(analysis))
 
     // Step 5: Run SaveDetector with full conversation + buddy reply
     const t3 = Date.now()
@@ -170,14 +172,9 @@ export async function POST(request: NextRequest) {
     console.log('[save-detector] result:', JSON.stringify({ save_trade: saveResult.save_trade, has_trade_data: !!saveResult.trade_data, instrument: saveResult.trade_data?.instrument, pnl: saveResult.trade_data?.pnl }))
     console.log('[agents] total:', Date.now() - t0, 'ms')
 
-    // Step 6: Non-blocking check — grab Analyst if it already finished
-    const analysis = await Promise.race([analysisPromise, Promise.resolve(null)])
-    if (shouldRunAnalyst) console.log('[agents] analyst:', Date.now() - t1, 'ms', analysis === null ? '(still running / skipped)' : '(done)')
-
-    // Step 6b: Write rule violations — fire-and-forget, never block Buddy
+    // Step 6: Write rule violations — fire-and-forget
     if (analysis && analysis.violations && analysis.violations.length > 0) {
       const currentSessionId = sessionResult.data?.id ?? null
-      const existingCount = (sessionResult.data as { violation_count?: number } | null)?.violation_count ?? 0
 
       const violationInserts = analysis.violations.map(v =>
         supabase.from('rule_violations').insert({
@@ -197,17 +194,20 @@ export async function POST(request: NextRequest) {
 
       const writes: Promise<unknown>[] = [...violationInserts, ...triggerUpdates]
 
+      console.log('[violations] session id:', currentSessionId, '| count:', analysis.violations.length)
+
       if (currentSessionId) {
         writes.push(
-          supabase.schema('public').from('sessions')
-            .update({ violation_count: existingCount + analysis.violations.length })
-            .eq('id', currentSessionId)
+          supabase.rpc('increment_violation_count', {
+            target_session_id: currentSessionId,
+            increment_by: analysis.violations.length,
+          })
         )
       }
 
-      Promise.all(writes).catch(err =>
-        console.error('[violations] write failed:', err)
-      )
+      Promise.all(writes)
+        .then(() => console.log('[violations] writes complete'))
+        .catch(err => console.error('[violations] write failed:', err))
     }
 
     // Step 7: Update conversation history

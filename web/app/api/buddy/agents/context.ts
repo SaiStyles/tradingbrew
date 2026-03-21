@@ -44,7 +44,7 @@ export async function runContext(
         .limit(10),
       supabase
         .from('rules')
-        .select('id, raw_text, rule_type, value')
+        .select('id, raw_text')
         .eq('user_id', userId)
         .eq('is_active', true)
         .is('deleted_at', null),
@@ -78,7 +78,7 @@ export async function runContext(
       todaysTrades: trades,
       todaysPnL: pnl,
       todaysTradeCount: trades.length,
-      activeRules: rulesData as Array<{ rule_type: string; value: number }>,
+      activeRules: [],
       active_rules: rulesData
         .filter(r => r.raw_text)
         .map(r => ({ id: r.id as string, raw_text: r.raw_text as string })),

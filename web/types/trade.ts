@@ -70,7 +70,7 @@ export interface ContextPacket {
   todaysTrades: TradeRecord[]
   todaysPnL: number
   todaysTradeCount: number
-  activeRules: Array<{ rule_type: string; value: number }>
+  activeRules: never[]
   active_rules: Array<{ id: string; raw_text: string }>
   propFirmAccount: AccountRecord | null
   upcomingNews: NewsEvent[]

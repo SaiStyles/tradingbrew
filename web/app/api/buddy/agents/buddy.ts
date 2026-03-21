@@ -32,8 +32,8 @@ export async function runBuddy(params: BuddyParams): Promise<string> {
       ? context.upcomingNews.map(n => `${n.event_name} (${n.scheduled_at})`).join(', ')
       : 'None'
 
-    const rulesStr = context.activeRules.length > 0
-      ? context.activeRules.slice(0, 5).map(r => `${r.rule_type}: ${r.value}`).join(', ')
+    const rulesStr = context.active_rules.length > 0
+      ? context.active_rules.slice(0, 5).map(r => r.raw_text).join(', ')
       : 'None'
 
     const analysisStr = analysis && (

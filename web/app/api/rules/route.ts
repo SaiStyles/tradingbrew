@@ -55,8 +55,8 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error('[POST /api/rules] insert error:', error)
-      return NextResponse.json({ error: 'Failed to create rule' }, { status: 500 })
+      console.error('[POST /api/rules] insert error:', JSON.stringify(error))
+      return NextResponse.json({ error: 'Failed to create rule', detail: error.message }, { status: 500 })
     }
 
     return NextResponse.json({ rule: rule as Rule }, { status: 201 })
