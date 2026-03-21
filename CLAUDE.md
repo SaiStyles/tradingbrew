@@ -162,6 +162,9 @@ Agent principle:
 - All conversation decisions → Buddy agent
 - All data extraction → Extractor agent
 - Our code = infrastructure only
+- Agent behavior is controlled by prompt instructions,
+  never by hardcoded logic
+- Before adding code to an agent → try prompt first 
 
 ## Windows/PowerShell Notes
 - Quotes for paths with parentheses: "app/(auth)"
@@ -176,3 +179,8 @@ Agent principle:
 3. Web first, Tauri after validation
 4. Never build outside the bible
 5. Refactor don't rebuild
+6. Instructions before code — before writing 
+   any logic, ask: "Can Claude handle this 
+   with better prompt instructions?" 
+   If yes → update the prompt. If no → write code.
+   90% of the time the answer is yes.

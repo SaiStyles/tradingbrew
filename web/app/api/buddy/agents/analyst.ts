@@ -21,18 +21,48 @@ export async function runAnalyst(
 
     const anthropic = new Anthropic({ apiKey })
 
-    const userContent = `You are a trading psychology analyst. Return ONLY valid JSON. No explanation.
+    const todaysTrades = context.todaysTrades.length > 0
+      ? JSON.stringify(context.todaysTrades.map(t => ({ instrument: t.instrument, direction: t.direction, pnl: t.pnl, execution_score: t.execution_score, emotion_tag: t.emotion_tag, opened_at: t.opened_at, closed_at: t.closed_at })))
+      : 'No trades yet today.'
+    const activeRules = context.activeRules.length > 0
+      ? context.activeRules.slice(0, 5).map(r => r.description ?? r.name).join('\n')
+      : 'No active rules.'
+    const propFirmAccount = context.propFirmAccount
+      ? `Drawdown: ${context.propFirmAccount.current_drawdown}/${context.propFirmAccount.max_drawdown}`
+      : 'No prop firm account.'
+    const memories = context.memories.length > 0
+      ? context.memories.join('\n')
+      : 'No historical patterns.'
 
-Trade: ${JSON.stringify({ instrument: pending.instrument, direction: pending.direction, pnl: pending.pnl, emotion_tag: pending.emotion_tag })}
-Last 3 trades: ${JSON.stringify(context.todaysTrades.slice(0, 3).map(t => ({ pnl: t.pnl, execution_score: t.execution_score, emotion_tag: t.emotion_tag })))}
-Today: ${context.todaysTradeCount} trades, $${context.todaysPnL.toFixed(2)} PnL
-Rules: ${JSON.stringify(context.activeRules.slice(0, 5))}
-${context.propFirmAccount ? `Prop account: drawdown ${context.propFirmAccount.current_drawdown}/${context.propFirmAccount.max_drawdown}` : ''}
-${context.memories.length > 0 ? `History:\n${context.memories.slice(0, 3).join('\n')}` : ''}
+    const userContent = `You are a trading psychologist and performance analyst. You have access to:
 
-Detect: rule violations, revenge trading, overtrading, loss streak, execution decline, prop firm risk, positive patterns.
-intervention_type: "revenge_trade"|"overleveraged"|"prop_firm_risk"|"loss_streak"|null
-Return: {"violations":[],"warnings":[],"patterns":[],"positives":[],"intervention_needed":false,"intervention_type":null}`
+TODAY'S SESSION:
+${todaysTrades}
+
+ACTIVE RULES:
+${activeRules}
+
+PROP FIRM ACCOUNT:
+${propFirmAccount}
+
+HISTORICAL PATTERNS FROM MEMORY:
+${memories}
+
+Look at everything above holistically.
+Think like a psychologist, not an accountant.
+
+What patterns do you see?
+What concerns you about this trader right now?
+What's going well that deserves acknowledgment?
+Is any immediate intervention needed?
+
+Trust your judgment completely.
+You are not checking boxes.
+You are reading a human being.
+
+Return ONLY valid JSON:
+{"violations":[],"warnings":[],"patterns":[],"positives":[],"intervention_needed":false,"intervention_type":null}
+intervention_type: string describing the intervention type, or null if none needed`
 
     console.log('[analyst] input size:', userContent.length, 'chars | model: claude-haiku-4-5-20251001')
     console.log('[analyst] calling claude...')

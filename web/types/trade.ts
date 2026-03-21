@@ -58,7 +58,7 @@ export interface AnalystReport {
   patterns: string[]
   positives: string[]
   intervention_needed: boolean
-  intervention_type: 'revenge_trade' | 'overleveraged' | 'prop_firm_risk' | 'loss_streak' | null
+  intervention_type: string | null
 }
 
 export type EmotionTag =
