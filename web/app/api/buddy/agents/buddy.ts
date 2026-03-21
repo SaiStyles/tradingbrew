@@ -20,6 +20,7 @@ interface BuddyParams {
     trading_timezone: string
   }
   currentMessage: string
+  tradingDate: string
 }
 
 export async function runBuddy(params: BuddyParams): Promise<string> {
@@ -29,7 +30,7 @@ export async function runBuddy(params: BuddyParams): Promise<string> {
     if (!apiKey) return fallback
 
     const anthropic = new Anthropic({ apiKey })
-    const { state, pending, context, analysis, messages, user, currentMessage } = params
+    const { state, pending, context, analysis, messages, user, currentMessage, tradingDate } = params
 
     const newsStr = context.upcomingNews.length > 0
       ? context.upcomingNews.map(n => `${n.event_name} (${n.scheduled_at})`).join(', ')
@@ -50,7 +51,7 @@ export async function runBuddy(params: BuddyParams): Promise<string> {
       `TODAY: ${context.todaysTradeCount} trades, $${context.todaysPnL.toFixed(2)} PnL${newsStr ? ` | Events: ${newsStr}` : ''}`,
       `STATE: ${state}`,
       `TRADE IN PROGRESS: ${JSON.stringify(pending)}`,
-      hasMemories ? `\nTRADER HISTORY (inform tone, never reference directly):\n${context.memories.join('\n')}` : '',
+      hasMemories ? `\nPAST HISTORY (for context only):\nToday's trading date is ${tradingDate}. Any memory dated before ${tradingDate} is from a previous session — treat as background context only, NEVER as something happening right now. The trader's current message is always describing something NEW happening today.\n${context.memories.join('\n')}` : '',
       hasFindings ? [
         `\nANALYST:`,
         analysis!.violations.length > 0 ? `Violations: ${analysis!.violations.join(', ')}` : '',

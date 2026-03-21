@@ -28,6 +28,8 @@ interface SessionState {
   messages: ChatMessage[]
   cached_memories: string[]
   memories_cached_at: string // ISO timestamp, empty = never cached
+  last_analysis: import('@/types/trade').AnalystReport | null
+  session_date: string // YYYY-MM-DD in trading timezone
 }
 
 // ------------------------------------------------------------------
@@ -43,6 +45,8 @@ function defaultSession(): SessionState {
     messages: [],
     cached_memories: [],
     memories_cached_at: '',
+    last_analysis: null,
+    session_date: '',
   }
 }
 
@@ -212,11 +216,26 @@ export async function POST(request: NextRequest) {
           messages: (raw.messages as ChatMessage[]) ?? [],
           cached_memories: (raw.cached_memories as string[]) ?? [],
           memories_cached_at: (raw.memories_cached_at as string) ?? '',
+          last_analysis: (raw.last_analysis as import('@/types/trade').AnalystReport | null) ?? null,
+          session_date: (raw.session_date as string) ?? '',
         }
       } catch {
         session = defaultSession()
       }
     }
+
+    // New trading day check — reset volatile session state, keep Mem0/Supabase data intact
+    const tradingDate = getTodayInTz(tradingTimezone)
+    if (session.session_date && session.session_date !== tradingDate) {
+      console.log('[buddy] new trading day detected, clearing session')
+      session.messages = []
+      session.pending_trade_data = {}
+      session.last_analysis = null
+      session.off_topic_count = 0
+      session.cached_memories = []
+      session.memories_cached_at = ''
+    }
+    session.session_date = tradingDate
 
     console.log('[buddy] state:', session.state, '| pending:', JSON.stringify(session.pending_trade_data))
 
@@ -258,25 +277,21 @@ export async function POST(request: NextRequest) {
     // Step 4: State transition
     const newSession = nextState(session, extracted, pending)
 
-    // Step 5: Analyst with 2000ms timeout — Buddy never waits longer
+    // Step 5: Fire Analyst in background — no await, never blocks Buddy
     const shouldRunAnalyst = extracted.has_trade || context.todaysTradeCount >= 3
     const t1 = Date.now()
-    const analysis = shouldRunAnalyst
-      ? await Promise.race([
-          runAnalyst(extracted, context, pending),
-          new Promise<null>(resolve => setTimeout(() => resolve(null), 2000)),
-        ])
-      : null
-    if (shouldRunAnalyst) console.log('[agents] analyst:', Date.now() - t1, 'ms', analysis === null ? '(timed out)' : '')
+    const analysisPromise = shouldRunAnalyst
+      ? runAnalyst(extracted, context, pending).catch(() => null)
+      : Promise.resolve(null)
 
-    // Step 6: Buddy — plain text reply
+    // Step 6: Buddy runs immediately with previous message's analysis
     const t2 = Date.now()
     const reply = await runBuddy({
       state: newSession.state,
       pending: newSession.pending_trade_data,
       extracted,
       context,
-      analysis,
+      analysis: session.last_analysis ?? null,
       messages: session.messages,
       user: {
         buddy_name: (profile?.buddy_name as string | null) ?? 'Brew',
@@ -284,9 +299,14 @@ export async function POST(request: NextRequest) {
         trading_timezone: tradingTimezone,
       },
       currentMessage: message,
+      tradingDate,
     })
     console.log('[agents] buddy:', Date.now() - t2, 'ms')
     console.log('[agents] total:', Date.now() - t0, 'ms')
+
+    // Step 6b: Non-blocking check — grab Analyst if it already finished
+    const analysis = await Promise.race([analysisPromise, Promise.resolve(null)])
+    if (shouldRunAnalyst) console.log('[agents] analyst:', Date.now() - t1, 'ms', analysis === null ? '(still running / skipped)' : '(done)')
 
     // Step 7: Update message history — clear after save to prevent context bleed
     const shouldSaveTrade = isReadyToSave(pending)
@@ -338,13 +358,13 @@ export async function POST(request: NextRequest) {
           // WRITE 1 — trade insight (fire-and-forget)
           const t = insertedTrade
           if (t) {
-            const tradeInsight = `Trader closed ${t.instrument} ${t.direction} with ${(t.pnl ?? 0) > 0 ? '+' : ''}${t.pnl} PnL. Execution score: ${t.execution_score}/10. Emotion: ${t.emotion_tag}. Followed plan: ${t.followed_plan ? 'yes' : 'no'}. Entry: ${t.opened_at}. Exit: ${t.closed_at}.${t.incomplete ? ' Trade data incomplete.' : ''}`
+            const tradeInsight = `${tradingDate}: Trader closed ${t.instrument} ${t.direction} with ${(t.pnl ?? 0) > 0 ? '+' : ''}$${t.pnl} PnL. Execution score: ${t.execution_score}/10. Emotion: ${t.emotion_tag}. Followed plan: ${t.followed_plan ? 'yes' : 'no'}. Entry: ${t.opened_at}. Exit: ${t.closed_at}.${t.incomplete ? ' Trade data incomplete.' : ''}`
             writeMemory(user.id, tradeInsight).catch(e => console.log('[mem0] write error:', e))
           }
 
           // WRITE 2 — session insight (fire-and-forget)
           if (context.todaysTradeCount > 0) {
-            const sessionInsight = `Trading session summary: Trades today: ${context.todaysTradeCount}. Total PnL: ${context.todaysPnL > 0 ? '+' : ''}${context.todaysPnL.toFixed(2)}. Analyst findings: ${analysis?.patterns?.join(', ') || 'none'}. Warnings: ${analysis?.warnings?.join(', ') || 'none'}. Violations: ${analysis?.violations?.join(', ') || 'none'}.`
+            const sessionInsight = `${tradingDate}: Session summary. Trades: ${context.todaysTradeCount}. Total PnL: ${context.todaysPnL > 0 ? '+' : ''}$${context.todaysPnL.toFixed(2)}. Patterns: ${analysis?.patterns?.join(', ') || 'none'}. Warnings: ${analysis?.warnings?.join(', ') || 'none'}. Violations: ${analysis?.violations?.join(', ') || 'none'}.`
             writeMemory(user.id, sessionInsight).catch(e => console.log('[mem0] write error:', e))
           }
         }
@@ -356,9 +376,10 @@ export async function POST(request: NextRequest) {
     // Step 9: Persist session state
     // After trade save → clear memory cache so next message fetches fresh insights
     const latestMemories = context.memories
+    const nextAnalysis = analysis ?? session.last_analysis ?? null
     const finalSession: SessionState = shouldSaveTrade
-      ? { state: 'idle', pending_trade_data: {}, off_topic_count: 0, screenshot_eligible: false, messages: [], cached_memories: [], memories_cached_at: '' }
-      : { ...newSession, messages: updatedMessages, cached_memories: latestMemories, memories_cached_at: new Date().toISOString() }
+      ? { state: 'idle', pending_trade_data: {}, off_topic_count: 0, screenshot_eligible: false, messages: [], cached_memories: [], memories_cached_at: '', last_analysis: null, session_date: tradingDate }
+      : { ...newSession, messages: updatedMessages, cached_memories: latestMemories, memories_cached_at: new Date().toISOString(), last_analysis: nextAnalysis, session_date: tradingDate }
 
     const sessionPayload = {
       state: finalSession.state,
@@ -368,6 +389,8 @@ export async function POST(request: NextRequest) {
       messages: finalSession.messages,
       cached_memories: finalSession.cached_memories,
       memories_cached_at: finalSession.memories_cached_at,
+      last_analysis: finalSession.last_analysis,
+      session_date: finalSession.session_date,
     }
 
     try {
