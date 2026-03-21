@@ -180,7 +180,8 @@ SAVE DETECTOR (Haiku)
 - ✅ Trading timezone support
 - ✅ Settings page (timezone, buddy name, 
      personality, account setup, notifications)
-- ⬜ Rules manager
+-✅ Rules manager (NL rules, AI enforcement, 
+     violation tracking, sidebar badge)
 - ⬜ Performance dashboard
 - ⬜ News alerts
 - ⬜ Tauri desktop app 
