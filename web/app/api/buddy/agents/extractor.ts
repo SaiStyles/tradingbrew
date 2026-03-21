@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { ExtractedData } from '@/types/trade'
 import { getISOOffset, getTodayInTz } from '../timezone'
+import { parseJSON } from '@/lib/claude/parser'
 
 const FAILED: ExtractedData = {
   instrument: null, direction: null, pnl: null,
@@ -60,9 +61,10 @@ Field rules:
       ],
     })
 
-    const raw = '{' + (result.content[0].type === 'text' ? result.content[0].text : '')
-    const cleaned = raw.replace(/```json/g, '').replace(/```/g, '').trim()
-    return JSON.parse(cleaned) as ExtractedData
+    const raw = result.content[0].type === 'text' ? result.content[0].text : ''
+    const parsed = parseJSON<ExtractedData>(raw)
+    if (!parsed) return { ...FAILED }
+    return parsed
   } catch (e) {
     console.log('[extractor] failed:', e)
     return { ...FAILED }

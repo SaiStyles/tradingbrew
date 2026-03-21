@@ -158,6 +158,7 @@ export async function POST(request: NextRequest) {
       ...session.messages,
       { role: 'user' as const, content: message },
     ]
+    console.log('[save-detector] calling with messages count:', conversationSoFar.length, 'last message:', conversationSoFar[conversationSoFar.length - 1]?.content?.slice(0, 50))
     const saveResult = await runSaveDetector({
       messages: conversationSoFar,
       buddyReply,
@@ -166,6 +167,7 @@ export async function POST(request: NextRequest) {
       tradingTimezone,
     })
     console.log('[agents] save-detector:', Date.now() - t3, 'ms')
+    console.log('[save-detector] result:', JSON.stringify({ save_trade: saveResult.save_trade, has_trade_data: !!saveResult.trade_data, instrument: saveResult.trade_data?.instrument, pnl: saveResult.trade_data?.pnl }))
     console.log('[agents] total:', Date.now() - t0, 'ms')
 
     // Step 6: Non-blocking check — grab Analyst if it already finished
@@ -183,6 +185,10 @@ export async function POST(request: NextRequest) {
     let savedTrade = null
     if (saveResult.save_trade && saveResult.trade_data) {
       const td = saveResult.trade_data
+      if (td.execution_score != null) {
+        td.execution_score = Math.round(td.execution_score)
+      }
+      console.log('[route] about to save trade, session messages count:', session.messages.length)
       console.log('[buddy] SAVING TRADE:', JSON.stringify(td, null, 2))
       try {
         const closedAt = td.closed_at ?? nowInTz(tradingTimezone)
@@ -216,6 +222,10 @@ export async function POST(request: NextRequest) {
         } else {
           console.log('[buddy] trade saved:', insertedTrade?.id)
           savedTrade = insertedTrade
+          updatedMessages.push({
+            role: 'user' as const,
+            content: `[SYSTEM: Trade already saved — ${td.instrument} ${td.direction} $${td.pnl} at ${td.opened_at}. Do not save this trade again under any circumstances.]`,
+          })
 
           // WRITE 1 — trade insight (fire-and-forget)
           const t = insertedTrade

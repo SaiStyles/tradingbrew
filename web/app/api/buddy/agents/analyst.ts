@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { ExtractedData, ContextPacket, AnalystReport, TradeRecord } from '@/types/trade'
+import { parseJSON } from '@/lib/claude/parser'
 
 const EMPTY: AnalystReport = {
   violations: [],
@@ -69,7 +70,7 @@ intervention_type: string describing the intervention type, or null if none need
 
     const result = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 500,
+      max_tokens: 1000,
       messages: [
         { role: 'user', content: userContent },
         { role: 'assistant', content: '{' },
@@ -78,9 +79,10 @@ intervention_type: string describing the intervention type, or null if none need
 
     console.log('[analyst] claude responded')
 
-    const raw = '{' + (result.content[0].type === 'text' ? result.content[0].text : '')
-    const cleaned = raw.replace(/```json/g, '').replace(/```/g, '').trim()
-    return JSON.parse(cleaned) as AnalystReport
+    const raw = result.content[0].type === 'text' ? result.content[0].text : ''
+    const parsed = parseJSON<AnalystReport>(raw)
+    if (!parsed) return { ...EMPTY }
+    return parsed
   } catch (e) {
     console.error('[analyst] failed:', e)
     return { ...EMPTY }

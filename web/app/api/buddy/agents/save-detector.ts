@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { ChatMessage, ExtractedData, BuddyResponse } from '@/types/trade'
 import { getISOOffset } from '../timezone'
+import { parseJSON } from '@/lib/claude/parser'
 
 interface SaveDetectorParams {
   messages: ChatMessage[]
@@ -28,37 +29,15 @@ export async function runSaveDetector(params: SaveDetectorParams): Promise<Buddy
     const system = `You are a trade data extractor.
 Read the conversation and determine if a complete trade is ready to be saved.
 
-DUPLICATE PREVENTION — CRITICAL:
-Read the full conversation history carefully.
-If the conversation shows a trade was already saved (Buddy said something like 'logged', 'saved', 'got it down', 'on the books', or the conversation moved past trade collection into general chat) — return save_trade: false.
-
-Use common sense. If you already returned save_trade: true for this exact trade in a previous turn, do not save it again.
-
-A new trade only begins when the trader clearly describes NEW details — different PnL, different time, different instrument, or explicitly says 'another trade'.
-
-When in doubt — do NOT save. Saving twice is worse than not saving.
-
-CONVERSATION:
-${conversationStr}
-
-BUDDY'S LATEST REPLY:
-${buddyReply}
-
-CURRENT EXTRACTION:
-${JSON.stringify(extracted)}
-
-TODAY: ${tradingDate}
-TIMEZONE OFFSET: ${offset}
-
-A trade is ready to save when the conversation contains ALL of these minimum fields:
+A trade is ready when the conversation contains ALL of these fields:
 - instrument (NQ, ES, EUR/USD etc)
 - direction (long or short)
-- pnl (stated by trader — never calculate)
-- emotion (inferred from conversation)
-- execution_score (1-10, stated by trader)
-
-Optional but include if mentioned:
+- pnl (dollar amount trader made or lost)
 - opened_at (entry time)
+- emotion (how trader felt)
+- execution_score (number 1-10)
+
+These fields are optional but include if mentioned:
 - closed_at (exit time)
 - entry_price
 - exit_price
@@ -66,33 +45,50 @@ Optional but include if mentioned:
 - position_size
 - followed_plan
 
+DUPLICATE RULE — ONLY exception to saving:
+If conversation contains a message starting with [SYSTEM: Trade already saved] that matches this trade's instrument + pnl → return save_trade: false
+
+For everything else:
+If minimum fields present → save_trade: true
+If minimum fields NOT present → save_trade: false
+
+You are not a judge. You are not a detector.
+You just check if the fields exist.
+That is your entire job.
+
 Time format when building timestamps:
-${tradingDate}T{stated_time}:00${offset}
+${tradingDate}T{time}:00${offset}
 Example: ${tradingDate}T09:30:00${offset}
-Never append Z. Never convert timezone.
-Use stated PnL always — never calculate from prices.
+Never append Z.
 
-If trade is NOT ready return:
-{"reply":"${buddyReply.replace(/"/g, '\\"')}","save_trade":false,"trade_data":null}
+Use stated PnL always.
+Never calculate PnL from prices.
 
-If trade IS ready return:
-{"reply":"${buddyReply.replace(/"/g, '\\"')}","save_trade":true,"trade_data":{"instrument":null,"direction":null,"pnl":null,"opened_at":null,"closed_at":null,"entry_price":null,"exit_price":null,"stop_loss":null,"position_size":null,"emotion_tag":null,"execution_score":null,"followed_plan":null}}
+Return ONLY valid JSON:
+{"save_trade":false,"trade_data":null,"reply":""}
 
-Return ONLY valid JSON starting with {.`
+If save_trade is true:
+{"save_trade":true,"trade_data":{"instrument":null,"direction":null,"pnl":null,"opened_at":null,"closed_at":null,"entry_price":null,"exit_price":null,"stop_loss":null,"position_size":null,"emotion_tag":null,"execution_score":null,"followed_plan":null},"reply":""}
+
+reply is always empty string.
+trade_data is null when save_trade is false.`
 
     const result = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 400,
       system,
       messages: [
-        { role: 'user' as const, content: 'Analyze the conversation and return the JSON.' },
-        { role: 'assistant' as const, content: '{' },
+        {
+          role: 'user' as const,
+          content: `CONVERSATION:\n${conversationStr}\n\nCURRENT EXTRACTION:\n${JSON.stringify(extracted)}\n\nAnalyze and return the JSON.`,
+        },
       ],
     })
 
-    const raw = '{' + (result.content[0].type === 'text' ? result.content[0].text : '')
-    const cleaned = raw.replace(/```json/g, '').replace(/```/g, '').trim()
-    return JSON.parse(cleaned) as BuddyResponse
+    const raw = result.content[0].type === 'text' ? result.content[0].text : ''
+    const parsed = parseJSON<BuddyResponse>(raw)
+    if (!parsed) return fallback
+    return { ...parsed, reply: buddyReply }
   } catch (e) {
     console.error('[save-detector] failed:', e)
     return fallback
