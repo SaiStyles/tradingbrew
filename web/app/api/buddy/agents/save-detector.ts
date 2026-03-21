@@ -28,6 +28,16 @@ export async function runSaveDetector(params: SaveDetectorParams): Promise<Buddy
     const system = `You are a trade data extractor.
 Read the conversation and determine if a complete trade is ready to be saved.
 
+DUPLICATE PREVENTION — CRITICAL:
+Read the full conversation history carefully.
+If the conversation shows a trade was already saved (Buddy said something like 'logged', 'saved', 'got it down', 'on the books', or the conversation moved past trade collection into general chat) — return save_trade: false.
+
+Use common sense. If you already returned save_trade: true for this exact trade in a previous turn, do not save it again.
+
+A new trade only begins when the trader clearly describes NEW details — different PnL, different time, different instrument, or explicitly says 'another trade'.
+
+When in doubt — do NOT save. Saving twice is worse than not saving.
+
 CONVERSATION:
 ${conversationStr}
 
