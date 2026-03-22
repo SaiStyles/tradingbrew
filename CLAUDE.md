@@ -25,12 +25,12 @@ Think Tony Stark and Jarvis — the buddy no trader has ever had.
 - Storage: Supabase Storage
 - AI Agents: 4-agent pipeline + SaveDetector
   → Extractor (Haiku) — field extraction
-  → Context (Haiku) — data fetching + Mem0 retrieval
+  → Context (Haiku) — data fetching + pgvector memory retrieval
   → Analyst (Haiku) — pattern detection, background
   → Buddy (Sonnet) — natural conversation, plain text
   → SaveDetector (Haiku) — save decision
 - Agent Parser: shared lib/claude/parser.ts
-- Memory: Mem0 (long term insights, patterns)
+- Memory: Supabase pgvector + OpenAI text-embedding-3-small (replaced Mem0)
 - Database Facts: Supabase PostgreSQL (trades, rules, accounts)
 - Voice V1: Web Speech API (free) + Web Speech Synthesis (free)
 - Voice V2: Whisper (input) + ElevenLabs (output) — after launch
@@ -90,9 +90,13 @@ tradingbrew/
 
 ## Memory Architecture
 - Supabase → FACTS (trades, prices, rules)
-- Mem0 → INSIGHTS (patterns, personality, emotional context)
+- Supabase pgvector → INSIGHTS (patterns, personality, emotional context)
+  → Embeddings via OpenAI text-embedding-3-small
+  → Stored in memories table (content + vector columns)
+  → Retrieved via search_memories SQL function (cosine similarity)
+  → lib/memory/memory.ts — writeMemory + readMemories
 - Context packet per conversation: today's data + rules + prop firm + news + top 5 memories
-- Backend orchestrates both — Claude never touches Mem0 directly
+- Backend orchestrates both — Claude never touches memory directly
 
 ## Agent Architecture — 4 Agent Pipeline
 
@@ -107,7 +111,7 @@ EXTRACTOR (Haiku)
 CONTEXT (Haiku)
 - Input: user_id + today's date + instrument
 - Output: context packet containing:
-  → Top 5 Mem0 memories (insights, patterns)
+  → Top 5 pgvector memories (insights, patterns)
   → Today's trades summary + P&L
   → Active rules
   → Prop firm status
@@ -170,7 +174,7 @@ SAVE DETECTOR (Haiku)
      soft delete, incomplete badge
 - ✅ 4-agent pipeline live (Extractor, Context, 
      Analyst, Buddy + SaveDetector)
-- ✅ Mem0 integration (writes + reads, dated memories)
+- ✅ Memory: Supabase pgvector + OpenAI embeddings (replaced Mem0 — zero per-call cost)
 - ✅ Session management (daily reset, caching)
 - ✅ Conversation history (20 messages)
 - ✅ Trades saving with all fields
