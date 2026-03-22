@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import type { ExtractedData, ChatMessage } from '@/types/trade'
+import type { ExtractedData } from '@/types/trade'
 import { getISOOffset, getTodayInTz } from '../timezone'
 import { parseJSON } from '@/lib/claude/parser'
 import { withRetry } from '@/lib/claude/retry'
@@ -16,8 +16,7 @@ const FAILED: ExtractedData = {
 
 export async function runExtractor(
   message: string,
-  tradingTimezone: string,
-  recentMessages?: ChatMessage[]
+  tradingTimezone: string
 ): Promise<ExtractedData> {
   try {
     const apiKey = process.env.ANTHROPIC_API_KEY
@@ -26,11 +25,6 @@ export async function runExtractor(
     const anthropic = new Anthropic({ apiKey })
     const today = getTodayInTz(tradingTimezone)
     const offset = getISOOffset(tradingTimezone)
-
-    const recentContext = recentMessages && recentMessages.length > 0
-      ? '\n\nRECENT CONVERSATION (last 3 messages — for has_trade detection only):\n' +
-        recentMessages.slice(-3).map(m => `${m.role === 'user' ? 'Trader' : 'Buddy'}: ${m.content}`).join('\n')
-      : ''
 
     const result = await withRetry(() => anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
@@ -61,7 +55,7 @@ Field rules:
 - followed_plan: true when trader says anything like 'i did', 'yes', 'followed it', 'stuck to the plan', 'disciplined', 'as planned'. false when trader says 'deviated', 'went off plan', 'shouldn't have', 'revenge', 'impulsive'. Use judgment — don't require exact phrases. null if not mentioned.
 - confirmed: true if user is agreeing/confirming in any natural way
 - declined: true if user is disagreeing, skipping, or saying no
-- has_trade: true if the CURRENT message OR any of the RECENT CONVERSATION messages contain ANY trade-related content: an instrument name (NQ, ES, MNQ, forex pair, stock ticker), a direction (long, short, buy, sell, bought, sold, longed, shorted), a P&L mention (made X, lost X, up X, down X, +X, -X), an entry or exit price, or trade times. A trader often spreads trade details across multiple messages — if recent context shows a trade in progress, has_trade is true even if the current message only adds one more field (e.g. times, prices, emotion).${recentContext}`,
+- has_trade: true if message contains ANY trade-related content: an instrument name (NQ, ES, MNQ, forex pair, stock ticker), a direction (long, short, buy, sell, bought, sold, longed, shorted), a P&L mention (made X, lost X, up X, down X, +X, -X), an entry or exit price, or trade times. Does NOT require all fields — even one trade field = true.`,
       messages: [
         { role: 'user', content: message },
         { role: 'assistant', content: '{' },

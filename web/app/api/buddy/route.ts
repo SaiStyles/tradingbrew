@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
     const t0 = Date.now()
     const [extracted, context] = await Promise.all([
       Promise.race([
-        runExtractor(message, tradingTimezone, session.messages),
+        runExtractor(message, tradingTimezone),
         new Promise<ExtractedData>(resolve => setTimeout(() => resolve(EXTRACTOR_EMPTY), 2000)),
       ]),
       runContext(user.id, tradingTimezone, cachedMemories),
