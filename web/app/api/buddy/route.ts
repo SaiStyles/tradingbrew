@@ -269,7 +269,8 @@ export async function POST(request: NextRequest) {
 
           // WRITE 2 — session insight (fire-and-forget)
           if (context.todaysTradeCount > 0) {
-            const sessionInsight = `${tradingDate}: Session summary. Trades: ${context.todaysTradeCount}. Total PnL: ${context.todaysPnL > 0 ? '+' : ''}$${context.todaysPnL.toFixed(2)}. Patterns: ${analysis?.patterns?.join(', ') || 'none'}. Warnings: ${analysis?.warnings?.join(', ') || 'none'}. Violations: ${analysis?.violations?.map(v => v.reasoning).join(', ') || 'none'}.`
+            const toStrings = (arr: unknown[]): string => arr.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join(', ') || 'none'
+            const sessionInsight = `${tradingDate}: Session summary. Trades: ${context.todaysTradeCount}. Total PnL: ${context.todaysPnL > 0 ? '+' : ''}$${context.todaysPnL.toFixed(2)}. Patterns: ${toStrings(analysis?.patterns ?? [])}. Warnings: ${toStrings(analysis?.warnings ?? [])}. Violations: ${toStrings(analysis?.violations?.map(v => v.reasoning) ?? [])}.`
             writeMemory(user.id, sessionInsight).catch(e => console.log('[mem0] write error:', e))
           }
         }

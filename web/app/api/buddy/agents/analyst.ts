@@ -90,7 +90,9 @@ Return ONLY valid JSON with these exact fields:
 violations: array of rule violations (use rule_id from ACTIVE TRADER RULES above). Empty array if none.
 severity: "warning" if at risk, "violation" if clearly broken.
 reasoning: write as if explaining to a coach, not a system. Never say "rule violated".
-warnings: general behavioral/psychological concerns not tied to a specific rule.
+warnings: array of plain strings — general behavioral/psychological concerns not tied to a specific rule. Each item must be a plain string, never an object.
+patterns: array of plain strings — recurring behavioral patterns observed. Each item must be a plain string, never an object.
+positives: array of plain strings — what the trader is doing well. Each item must be a plain string, never an object.
 intervention_type: string describing the intervention type, or null if none needed`
 
     console.log('[analyst] extracted received:', JSON.stringify(extracted))
