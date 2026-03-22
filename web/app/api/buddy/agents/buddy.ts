@@ -140,7 +140,7 @@ You are having a real conversation.`
 
     const result = await withRetry(() => anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 300,
+      max_tokens: 500,
       system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
       messages: [
         ...messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
