@@ -11,7 +11,14 @@
       "Bash(git commit:*)",
       "Bash(git push:*)",
       "Bash(git rm:*)",
-      "Bash(git revert:*)"
+      "Bash(git revert:*)",
+      "mcp__claude-flow__browser_open",
+      "Bash(git tag:*)",
+      "WebFetch(domain:tradovateservice.docs.apiary.io)",
+      "WebFetch(domain:www.tradovate.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:community.tradovate.com)",
+      "WebFetch(domain:tradovate.com)"
     ]
   }
 }
