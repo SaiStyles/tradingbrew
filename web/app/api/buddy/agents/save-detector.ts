@@ -46,6 +46,9 @@ These fields are optional but include if mentioned:
 - position_size
 - followed_plan
 
+MULTIPLE TRADES RULE:
+If the conversation contains multiple trades, save only the most recently discussed trade — the one Buddy is currently collecting fields for. Ignore earlier trades that already have a [SYSTEM: Trade already saved] marker in the conversation history. Never mix fields from two different trades.
+
 DUPLICATE RULE — ONLY exception to saving:
 If conversation contains a message starting with [SYSTEM: Trade already saved] that matches this trade's instrument + pnl → return save_trade: false
 
