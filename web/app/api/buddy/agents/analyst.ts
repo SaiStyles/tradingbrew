@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { ExtractedData, ContextPacket, AnalystReport, TradeRecord } from '@/types/trade'
-import { parseJSON } from '@/lib/claude/parser'
+import { parseAnalystOutput } from '@/lib/claude/parser'
 import { withRetry } from '@/lib/claude/retry'
 
 const EMPTY: AnalystReport = {
@@ -37,6 +37,20 @@ export async function runAnalyst(
       : 'No historical patterns.'
 
     const userContent = `You are a trading psychologist and performance analyst. You have access to:
+
+CURRENT TRADE (being collected, may be incomplete):
+instrument: ${extracted?.instrument ?? 'not yet provided'}
+direction: ${extracted?.direction ?? 'not yet provided'}
+pnl: ${extracted?.pnl ?? 'not yet provided'}
+opened_at: ${extracted?.opened_at ?? 'not yet provided'}
+closed_at: ${extracted?.closed_at ?? 'not yet provided'}
+entry_price: ${extracted?.entry_price ?? 'not yet provided'}
+exit_price: ${extracted?.exit_price ?? 'not yet provided'}
+emotion_tag: ${extracted?.emotion ?? 'not yet provided'}
+execution_score: ${extracted?.execution_score ?? 'not yet provided'}
+followed_plan: ${extracted?.followed_plan ?? 'not yet provided'}
+
+Reason about what is known. Do not flag missing fields as violations or warnings — they are simply not collected yet. Focus on what the available data tells you about patterns, rule adherence, and trader state.
 
 TODAY'S SESSION:
 ${todaysTrades}
@@ -80,6 +94,8 @@ reasoning: write as if explaining to a coach, not a system. Never say "rule viol
 warnings: general behavioral/psychological concerns not tied to a specific rule.
 intervention_type: string describing the intervention type, or null if none needed`
 
+    console.log('[analyst] extracted received:', JSON.stringify(extracted))
+    console.log('[analyst] userContent preview:', userContent.substring(0, 500))
     console.log('[analyst] input size:', userContent.length, 'chars | model: claude-haiku-4-5-20251001')
     console.log('[analyst] calling claude...')
 
@@ -97,9 +113,8 @@ intervention_type: string describing the intervention type, or null if none need
     // Prepend '{' because we prefilled the assistant turn with '{' — Claude's response starts after it
     const raw = result.content[0].type === 'text' ? '{' + result.content[0].text : ''
     console.log('[analyst] raw output:', raw.slice(0, 500))
-    const parsed = parseJSON<AnalystReport>(raw)
+    const parsed = parseAnalystOutput(raw)
     console.log('[analyst] parsed violations:', JSON.stringify(parsed?.violations))
-    if (!parsed) return { ...EMPTY }
     return parsed
   } catch (e) {
     console.error('[analyst] failed:', e)
