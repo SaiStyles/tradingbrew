@@ -83,10 +83,11 @@ trade_data is null when save_trade is false.`
           role: 'user' as const,
           content: `CONVERSATION:\n${conversationStr}\n\nCURRENT EXTRACTION:\n${JSON.stringify(extracted)}\n\nAnalyze and return the JSON.`,
         },
+        { role: 'assistant' as const, content: '{' },
       ],
     }))
 
-    const raw = result.content[0].type === 'text' ? result.content[0].text : ''
+    const raw = result.content[0].type === 'text' ? '{' + result.content[0].text : ''
     const parsed = parseJSON<BuddyResponse>(raw)
     if (!parsed) return fallback
     return { ...parsed, reply: buddyReply }

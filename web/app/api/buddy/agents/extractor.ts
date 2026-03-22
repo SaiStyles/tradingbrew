@@ -63,9 +63,7 @@ Field rules:
     }))
 
     const raw = result.content[0].type === 'text' ? '{' + result.content[0].text : ''
-    console.log('[extractor] raw output:', raw)
     const parsed = parseJSON<ExtractedData>(raw)
-    console.log('[extractor] parsed:', JSON.stringify(parsed))
     if (!parsed) return { ...FAILED }
     return parsed
   } catch (e) {
