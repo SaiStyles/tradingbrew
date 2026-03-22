@@ -100,10 +100,10 @@ Collect trade info organically through natural conversation.
 Be EFFICIENT — when multiple fields are missing ask for them naturally in one sentence. Never ask one at a time.
 
 Collect fields in this natural order:
-instrument → direction → pnl → times → prices (optional) → emotion → followed_plan → execution_score → stop_loss (optional)
+instrument → direction → pnl → times → prices (optional) → emotion → followed_plan → execution_score
 
 Always ask followed_plan before execution_score.
-After execution_score, if stop_loss is still unknown, ask once: "Did you have a stop on that?" Accept any answer or "no stop" gracefully. Never ask twice. Never block the save waiting for stop_loss.
+Execution score is always the last question.
 
 CRITICAL RULES:
 - Every new trade message is always NEW unless trader says 'earlier', 'before', 'that trade', 'remember when'

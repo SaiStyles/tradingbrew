@@ -37,7 +37,7 @@ function TradeCard({ trade, onClick, tradingTimezone }: { trade: TradeRecord; on
     >
       {/* Top-right badges */}
       <div className="absolute top-3 right-3 flex items-center gap-2">
-        {(!trade.entry_price || !trade.exit_price || !trade.opened_at || !trade.closed_at) && (
+        {trade.incomplete && (
           <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-1">
             <span>&#9888;</span> Incomplete
           </span>
