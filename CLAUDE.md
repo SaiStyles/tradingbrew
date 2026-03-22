@@ -138,8 +138,8 @@ SAVE DETECTOR (Haiku)
 - Input: full conversation history + buddy reply
 - Output: save_trade boolean + trade_data
 - One job: detect if minimum fields exist
-- Minimum fields: instrument, direction, pnl, 
-  opened_at, emotion, execution_score
+- Minimum fields: instrument, direction, pnl,
+  opened_at, emotion_tag, execution_score
 - Never judges data quality
 - Never detects patterns
 - Duplicate prevention via [SYSTEM: Trade already saved] 
@@ -180,8 +180,11 @@ SAVE DETECTOR (Haiku)
 - ✅ Trading timezone support
 - ✅ Settings page (timezone, buddy name, 
      personality, account setup, notifications)
--✅ Rules manager (NL rules, AI enforcement, 
+- ✅ Rules manager (NL rules, AI enforcement,
      violation tracking, sidebar badge)
+- ✅ Agent fixes (retry logic, parser fix,
+     Analyst injection, trade collision handling,
+     max_tokens, emotion_tag consistency)
 - ⬜ Performance dashboard
 - ⬜ News alerts
 - ⬜ Tauri desktop app 
