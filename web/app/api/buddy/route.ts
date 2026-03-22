@@ -128,11 +128,19 @@ export async function POST(request: NextRequest) {
     ])
     console.log('[agents] extractor + context:', Date.now() - t0, 'ms', memoryCacheValid ? '(mem cached)' : '(mem fresh)')
 
-    // Step 3+4: Run Analyst and Buddy in parallel — both start now, both awaited
-    const shouldRunAnalyst = extracted.has_trade || context.todaysTradeCount >= 3
-    const t1 = Date.now()
+    // Step 3+4+5: Buddy + Analyst + SaveDetector — all in parallel
+    const shouldRunAnalyst = extracted.has_trade
+    const useHaiku = !extracted.has_trade && (
+      !session.last_analysis ||
+      (session.last_analysis.violations.length === 0 && session.last_analysis.warnings.length === 0)
+    )
+    const conversationSoFar: ChatMessage[] = [
+      ...session.messages,
+      { role: 'user' as const, content: message },
+    ].slice(-8)
 
-    const [buddyReply, analysis] = await Promise.all([
+    const t1 = Date.now()
+    const [buddyReply, analysis, saveResultRaw] = await Promise.all([
       runBuddy({
         message,
         extracted,
@@ -145,31 +153,19 @@ export async function POST(request: NextRequest) {
           buddy_personality: (profile?.buddy_personality as string | null) ?? 'Friendly Mentor',
           trading_timezone: tradingTimezone,
         },
+        model: useHaiku ? 'claude-haiku-4-5-20251001' : 'claude-sonnet-4-6',
       }),
       shouldRunAnalyst
         ? runAnalyst(extracted, context, {}).catch(() => null)
         : Promise.resolve(null),
+      extracted.has_trade
+        ? runSaveDetector({ messages: conversationSoFar, buddyReply: '', extracted, tradingDate, tradingTimezone })
+        : Promise.resolve({ reply: '', save_trade: false, trade_data: null }),
     ])
-    console.log('[agents] buddy + analyst parallel:', Date.now() - t1, 'ms')
-    console.log('[debug] shouldRunAnalyst:', shouldRunAnalyst, '| has_trade:', extracted.has_trade, '| todaysTradeCount:', context.todaysTradeCount)
-    console.log('[debug] analysis result:', JSON.stringify(analysis))
-
-    // Step 5: Run SaveDetector with full conversation + buddy reply
-    const t3 = Date.now()
-    const conversationSoFar: ChatMessage[] = [
-      ...session.messages,
-      { role: 'user' as const, content: message },
-    ]
-    console.log('[save-detector] calling with messages count:', conversationSoFar.length, 'last message:', conversationSoFar[conversationSoFar.length - 1]?.content?.slice(0, 50))
-    const saveResult = await runSaveDetector({
-      messages: conversationSoFar,
-      buddyReply,
-      extracted,
-      tradingDate,
-      tradingTimezone,
-    })
-    console.log('[agents] save-detector:', Date.now() - t3, 'ms')
-    console.log('[save-detector] result:', JSON.stringify({ save_trade: saveResult.save_trade, has_trade_data: !!saveResult.trade_data, instrument: saveResult.trade_data?.instrument, pnl: saveResult.trade_data?.pnl }))
+    const saveResult = { ...saveResultRaw, reply: buddyReply }
+    console.log('[agents] buddy + analyst + save-detector parallel:', Date.now() - t1, 'ms')
+    console.log('[debug] shouldRunAnalyst:', shouldRunAnalyst, '| has_trade:', extracted.has_trade, '| useHaiku:', useHaiku)
+    console.log('[save-detector] result:', JSON.stringify({ save_trade: saveResult.save_trade, instrument: saveResult.trade_data?.instrument, pnl: saveResult.trade_data?.pnl }))
     console.log('[agents] total:', Date.now() - t0, 'ms')
 
     // Step 6: Write rule violations — fire-and-forget

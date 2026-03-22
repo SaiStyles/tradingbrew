@@ -80,7 +80,7 @@ trade_data is null when save_trade is false.`
     const result = await withRetry(() => anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 600,
-      system,
+      system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
       messages: [
         {
           role: 'user' as const,

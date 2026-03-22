@@ -19,6 +19,7 @@ interface BuddyParams {
     buddy_personality: string
     trading_timezone: string
   }
+  model?: string
 }
 
 export async function runBuddy(params: BuddyParams): Promise<string> {
@@ -139,7 +140,7 @@ Respond in plain natural text only.
 You are having a real conversation.`
 
     const result = await withRetry(() => anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: params.model ?? 'claude-sonnet-4-6',
       max_tokens: 500,
       system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
       messages: [
