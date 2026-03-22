@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
     const conversationSoFar: ChatMessage[] = [
       ...session.messages,
       { role: 'user' as const, content: message },
-    ].slice(-8)
+    ].slice(-12)
 
     const t1 = Date.now()
     const [buddyReply, analysis, saveResultRaw] = await Promise.all([
@@ -158,7 +158,7 @@ export async function POST(request: NextRequest) {
       shouldRunAnalyst
         ? runAnalyst(extracted, context, {}).catch(() => null)
         : Promise.resolve(null),
-      extracted.has_trade
+      (extracted.has_trade || session.messages.length > 0)
         ? runSaveDetector({ messages: conversationSoFar, buddyReply: '', extracted, tradingDate, tradingTimezone })
         : Promise.resolve({ reply: '', save_trade: false, trade_data: null }),
     ])
@@ -211,7 +211,7 @@ export async function POST(request: NextRequest) {
       ...session.messages,
       { role: 'user' as const, content: message },
       { role: 'assistant' as const, content: buddyReply },
-    ].slice(-10)
+    ].slice(-20)
 
     // Step 8: Save trade if SaveDetector decided to
     let savedTrade = null
