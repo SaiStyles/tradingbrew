@@ -5,6 +5,7 @@ import { runExtractor } from './agents/extractor'
 import { runContext } from './agents/context'
 import { runAnalyst } from './agents/analyst'
 import { runBuddy } from './agents/buddy'
+import { runSaveDetector } from './agents/save-detector'
 import { getTodayInTz, nowInTz } from './timezone'
 import { writeMemory } from '@/lib/memory/mem0'
 
@@ -115,13 +116,12 @@ export async function POST(request: NextRequest) {
       emotion: null, execution_score: null,
       followed_plan: null, confirmed: false,
       declined: false, has_trade: false,
-      save_trade: false, has_trade_data: false, trade_data: null,
     }
 
     const t0 = Date.now()
     const [extracted, context] = await Promise.all([
       Promise.race([
-        runExtractor(message, tradingTimezone, session.messages),
+        runExtractor(message, tradingTimezone),
         new Promise<ExtractedData>(resolve => setTimeout(() => resolve(EXTRACTOR_EMPTY), 2000)),
       ]),
       runContext(user.id, tradingTimezone, cachedMemories),
@@ -154,7 +154,22 @@ export async function POST(request: NextRequest) {
     console.log('[debug] shouldRunAnalyst:', shouldRunAnalyst, '| has_trade:', extracted.has_trade, '| todaysTradeCount:', context.todaysTradeCount)
     console.log('[debug] analysis result:', JSON.stringify(analysis))
 
-    console.log('[extractor] save_trade:', extracted.save_trade, '| has_trade_data:', extracted.has_trade_data, '| instrument:', extracted.trade_data?.instrument, '| pnl:', extracted.trade_data?.pnl)
+    // Step 5: Run SaveDetector with full conversation + buddy reply
+    const t3 = Date.now()
+    const conversationSoFar: ChatMessage[] = [
+      ...session.messages,
+      { role: 'user' as const, content: message },
+    ]
+    console.log('[save-detector] calling with messages count:', conversationSoFar.length, 'last message:', conversationSoFar[conversationSoFar.length - 1]?.content?.slice(0, 50))
+    const saveResult = await runSaveDetector({
+      messages: conversationSoFar,
+      buddyReply,
+      extracted,
+      tradingDate,
+      tradingTimezone,
+    })
+    console.log('[agents] save-detector:', Date.now() - t3, 'ms')
+    console.log('[save-detector] result:', JSON.stringify({ save_trade: saveResult.save_trade, has_trade_data: !!saveResult.trade_data, instrument: saveResult.trade_data?.instrument, pnl: saveResult.trade_data?.pnl }))
     console.log('[agents] total:', Date.now() - t0, 'ms')
 
     // Step 6: Write rule violations — fire-and-forget
@@ -202,10 +217,10 @@ export async function POST(request: NextRequest) {
       { role: 'assistant' as const, content: buddyReply },
     ].slice(-10)
 
-    // Step 8: Save trade if Extractor decided to
+    // Step 8: Save trade if SaveDetector decided to
     let savedTrade = null
-    if (extracted.save_trade && extracted.trade_data) {
-      const td = extracted.trade_data
+    if (saveResult.save_trade && saveResult.trade_data) {
+      const td = saveResult.trade_data
       if (td.execution_score != null) {
         td.execution_score = Math.round(td.execution_score)
       }
@@ -299,7 +314,7 @@ export async function POST(request: NextRequest) {
     // Step 10: Return
     return NextResponse.json({
       reply: buddyReply,
-      action: extracted.save_trade ? 'save_trade' : null,
+      action: saveResult.save_trade ? 'save_trade' : null,
       trade_data: savedTrade,
     })
 

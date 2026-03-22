@@ -21,9 +21,6 @@ export interface ExtractedData {
   confirmed: boolean
   declined: boolean
   has_trade: boolean
-  save_trade: boolean
-  has_trade_data: boolean
-  trade_data: Partial<TradeRecord> | null
 }
 
 export interface AccountRecord {
@@ -98,6 +95,12 @@ export type EmotionTag =
   | 'calm'
   | 'frustrated'
   | 'euphoric'
+
+export interface BuddyResponse {
+  reply: string
+  save_trade: boolean
+  trade_data: Partial<TradeRecord> | null
+}
 
 export interface TradeRecord {
   id: string
