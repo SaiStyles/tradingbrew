@@ -55,7 +55,7 @@ Field rules:
 - followed_plan: true when trader says anything like 'i did', 'yes', 'followed it', 'stuck to the plan', 'disciplined', 'as planned'. false when trader says 'deviated', 'went off plan', 'shouldn't have', 'revenge', 'impulsive'. Use judgment — don't require exact phrases. null if not mentioned.
 - confirmed: true if user is agreeing/confirming in any natural way
 - declined: true if user is disagreeing, skipping, or saying no
-- has_trade: true if message describes a completed or in-progress trade`,
+- has_trade: true if message contains ANY trade-related content: an instrument name (NQ, ES, MNQ, forex pair, stock ticker), a direction (long, short, buy, sell, bought, sold, longed, shorted), a P&L mention (made X, lost X, up X, down X, +X, -X), an entry or exit price, or trade times. Does NOT require all fields — even one trade field = true.`,
       messages: [
         { role: 'user', content: message },
         { role: 'assistant', content: '{' },
