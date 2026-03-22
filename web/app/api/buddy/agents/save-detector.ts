@@ -35,7 +35,7 @@ A trade is ready when the conversation contains ALL of these fields:
 - direction (long or short)
 - pnl (dollar amount trader made or lost)
 - opened_at (entry time)
-- emotion (how trader felt)
+- emotion_tag (how trader felt)
 - execution_score (number 1-10)
 
 These fields are optional but include if mentioned:
