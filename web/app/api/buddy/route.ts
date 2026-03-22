@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
-import type { ChatMessage, AnalystReport, ExtractedData, BuddyResponse } from '@/types/trade'
+import type { ChatMessage, AnalystReport, ExtractedData } from '@/types/trade'
 import { runExtractor } from './agents/extractor'
 import { runContext } from './agents/context'
 import { runAnalyst } from './agents/analyst'
@@ -154,27 +154,22 @@ export async function POST(request: NextRequest) {
     console.log('[debug] shouldRunAnalyst:', shouldRunAnalyst, '| has_trade:', extracted.has_trade, '| todaysTradeCount:', context.todaysTradeCount)
     console.log('[debug] analysis result:', JSON.stringify(analysis))
 
-    // Step 5: Run SaveDetector — only when Extractor detected trade content
-    let saveResult: BuddyResponse = { reply: buddyReply, save_trade: false, trade_data: null }
-    if (extracted.has_trade) {
-      const t3 = Date.now()
-      const conversationSoFar: ChatMessage[] = [
-        ...session.messages,
-        { role: 'user' as const, content: message },
-      ]
-      console.log('[save-detector] calling with messages count:', conversationSoFar.length, 'last message:', conversationSoFar[conversationSoFar.length - 1]?.content?.slice(0, 50))
-      saveResult = await runSaveDetector({
-        messages: conversationSoFar,
-        buddyReply,
-        extracted,
-        tradingDate,
-        tradingTimezone,
-      })
-      console.log('[agents] save-detector:', Date.now() - t3, 'ms')
-      console.log('[save-detector] result:', JSON.stringify({ save_trade: saveResult.save_trade, has_trade_data: !!saveResult.trade_data, instrument: saveResult.trade_data?.instrument, pnl: saveResult.trade_data?.pnl }))
-    } else {
-      console.log('[save-detector] skipped — no trade data')
-    }
+    // Step 5: Run SaveDetector with full conversation + buddy reply
+    const t3 = Date.now()
+    const conversationSoFar: ChatMessage[] = [
+      ...session.messages,
+      { role: 'user' as const, content: message },
+    ]
+    console.log('[save-detector] calling with messages count:', conversationSoFar.length, 'last message:', conversationSoFar[conversationSoFar.length - 1]?.content?.slice(0, 50))
+    const saveResult = await runSaveDetector({
+      messages: conversationSoFar,
+      buddyReply,
+      extracted,
+      tradingDate,
+      tradingTimezone,
+    })
+    console.log('[agents] save-detector:', Date.now() - t3, 'ms')
+    console.log('[save-detector] result:', JSON.stringify({ save_trade: saveResult.save_trade, has_trade_data: !!saveResult.trade_data, instrument: saveResult.trade_data?.instrument, pnl: saveResult.trade_data?.pnl }))
     console.log('[agents] total:', Date.now() - t0, 'ms')
 
     // Step 6: Write rule violations — fire-and-forget
