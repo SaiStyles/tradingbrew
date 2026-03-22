@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import type { ExtractedData } from '@/types/trade'
 import { getISOOffset, getTodayInTz } from '../timezone'
 import { parseJSON } from '@/lib/claude/parser'
+import { withRetry } from '@/lib/claude/retry'
 
 const FAILED: ExtractedData = {
   instrument: null, direction: null, pnl: null,
@@ -25,7 +26,7 @@ export async function runExtractor(
     const today = getTodayInTz(tradingTimezone)
     const offset = getISOOffset(tradingTimezone)
 
-    const result = await anthropic.messages.create({
+    const result = await withRetry(() => anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 400,
       system: `You are a data extractor for a trading journal.
@@ -59,7 +60,7 @@ Field rules:
         { role: 'user', content: message },
         { role: 'assistant', content: '{' },
       ],
-    })
+    }))
 
     const raw = result.content[0].type === 'text' ? result.content[0].text : ''
     const parsed = parseJSON<ExtractedData>(raw)

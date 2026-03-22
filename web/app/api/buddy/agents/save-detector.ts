@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import type { ChatMessage, ExtractedData, BuddyResponse } from '@/types/trade'
 import { getISOOffset } from '../timezone'
 import { parseJSON } from '@/lib/claude/parser'
+import { withRetry } from '@/lib/claude/retry'
 
 interface SaveDetectorParams {
   messages: ChatMessage[]
@@ -73,7 +74,7 @@ If save_trade is true:
 reply is always empty string.
 trade_data is null when save_trade is false.`
 
-    const result = await anthropic.messages.create({
+    const result = await withRetry(() => anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 400,
       system,
@@ -83,7 +84,7 @@ trade_data is null when save_trade is false.`
           content: `CONVERSATION:\n${conversationStr}\n\nCURRENT EXTRACTION:\n${JSON.stringify(extracted)}\n\nAnalyze and return the JSON.`,
         },
       ],
-    })
+    }))
 
     const raw = result.content[0].type === 'text' ? result.content[0].text : ''
     const parsed = parseJSON<BuddyResponse>(raw)

@@ -5,6 +5,7 @@ import type {
   AnalystReport,
   ChatMessage,
 } from '@/types/trade'
+import { withRetry } from '@/lib/claude/retry'
 
 interface BuddyParams {
   message: string
@@ -117,7 +118,7 @@ CRITICAL RULES:
 Respond in plain natural text only.
 You are having a real conversation.`
 
-    const result = await anthropic.messages.create({
+    const result = await withRetry(() => anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 300,
       system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
@@ -125,7 +126,7 @@ You are having a real conversation.`
         ...messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
         { role: 'user' as const, content: message },
       ],
-    })
+    }))
 
     return result.content[0].type === 'text' ? result.content[0].text.trim() : "Give me a second..."
   } catch (e) {

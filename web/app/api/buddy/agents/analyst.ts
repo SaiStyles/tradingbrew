@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { ExtractedData, ContextPacket, AnalystReport, TradeRecord } from '@/types/trade'
 import { parseJSON } from '@/lib/claude/parser'
+import { withRetry } from '@/lib/claude/retry'
 
 const EMPTY: AnalystReport = {
   violations: [],
@@ -82,14 +83,14 @@ intervention_type: string describing the intervention type, or null if none need
     console.log('[analyst] input size:', userContent.length, 'chars | model: claude-haiku-4-5-20251001')
     console.log('[analyst] calling claude...')
 
-    const result = await anthropic.messages.create({
+    const result = await withRetry(() => anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 1000,
       messages: [
         { role: 'user', content: userContent },
         { role: 'assistant', content: '{' },
       ],
-    })
+    }))
 
     console.log('[analyst] claude responded')
 
