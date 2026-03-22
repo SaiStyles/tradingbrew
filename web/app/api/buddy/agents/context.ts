@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import type { ContextPacket, TradeRecord, AccountRecord, NewsEvent } from '@/types/trade'
 import { getTodayInTz, getISOOffset } from '../timezone'
-import { readMemories } from '@/lib/memory/mem0'
+import { readMemories } from '@/lib/memory/memory'
 
 const EMPTY: ContextPacket = {
   todaysTrades: [],

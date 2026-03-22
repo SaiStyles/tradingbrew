@@ -7,7 +7,7 @@ import { runAnalyst } from './agents/analyst'
 import { runBuddy } from './agents/buddy'
 import { runSaveDetector } from './agents/save-detector'
 import { getTodayInTz, nowInTz } from './timezone'
-import { writeMemory } from '@/lib/memory/mem0'
+import { writeMemory } from '@/lib/memory/memory'
 
 // ------------------------------------------------------------------
 // Types
