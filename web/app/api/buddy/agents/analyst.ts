@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import type { ExtractedData, ContextPacket, AnalystReport, TradeRecord } from '@/types/trade'
+import type { ExtractedData, ContextPacket, AnalystReport } from '@/types/trade'
 import { parseAnalystOutput } from '@/lib/claude/parser'
 import { withRetry } from '@/lib/claude/retry'
 
@@ -15,7 +15,6 @@ const EMPTY: AnalystReport = {
 export async function runAnalyst(
   extracted: ExtractedData,
   context: ContextPacket,
-  pending: Partial<TradeRecord>
 ): Promise<AnalystReport> {
   try {
     const apiKey = process.env.ANTHROPIC_API_KEY

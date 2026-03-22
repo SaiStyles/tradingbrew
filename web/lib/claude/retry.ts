@@ -11,7 +11,9 @@ export async function withRetry<T>(
       const isRetryable =
         status === 529 ||
         status === 503 ||
-        status === 500
+        status === 500 ||
+        status === 429 ||
+        status == null // network errors have no status
       const isLastAttempt = i === retries - 1
 
       if (isRetryable && !isLastAttempt) {

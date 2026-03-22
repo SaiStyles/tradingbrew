@@ -90,7 +90,8 @@ export async function POST(request: NextRequest) {
 
     // New trading day check — reset volatile session state, keep Mem0/Supabase data intact
     const tradingDate = getTodayInTz(tradingTimezone)
-    if (session.session_date && session.session_date !== tradingDate) {
+    const isNewDay = !!session.session_date && session.session_date !== tradingDate
+    if (isNewDay) {
       console.log('[buddy] new trading day detected, clearing session')
       session.messages = []
       session.last_analysis = null
@@ -129,7 +130,7 @@ export async function POST(request: NextRequest) {
     console.log('[agents] extractor + context:', Date.now() - t0, 'ms', memoryCacheValid ? '(mem cached)' : '(mem fresh)')
 
     // Step 3+4+5: Buddy + Analyst + SaveDetector — all in parallel
-    const shouldRunAnalyst = extracted.has_trade
+    const shouldRunAnalyst = extracted.has_trade || context.todaysTradeCount >= 3
     const useHaiku = !extracted.has_trade && (
       !session.last_analysis ||
       (session.last_analysis.violations.length === 0 && session.last_analysis.warnings.length === 0)
@@ -137,7 +138,7 @@ export async function POST(request: NextRequest) {
     const conversationSoFar: ChatMessage[] = [
       ...session.messages,
       { role: 'user' as const, content: message },
-    ].slice(-12)
+    ].slice(-20)
 
     const t1 = Date.now()
     const [buddyReply, analysis, saveResultRaw] = await Promise.all([
@@ -156,7 +157,7 @@ export async function POST(request: NextRequest) {
         model: useHaiku ? 'claude-haiku-4-5-20251001' : 'claude-sonnet-4-6',
       }),
       shouldRunAnalyst
-        ? runAnalyst(extracted, context, {}).catch(() => null)
+        ? runAnalyst(extracted, context).catch(() => null)
         : Promise.resolve(null),
       (extracted.has_trade || session.messages.length > 0)
         ? runSaveDetector({ messages: conversationSoFar, buddyReply: '', extracted, tradingDate, tradingTimezone })
@@ -218,7 +219,7 @@ export async function POST(request: NextRequest) {
     if (saveResult.save_trade && saveResult.trade_data) {
       const td = saveResult.trade_data
       if (td.execution_score != null) {
-        td.execution_score = Math.round(td.execution_score)
+        td.execution_score = Math.min(10, Math.max(1, Math.round(td.execution_score)))
       }
       console.log('[route] about to save trade, session messages count:', session.messages.length)
       console.log('[buddy] SAVING TRADE:', JSON.stringify(td, null, 2))
@@ -289,7 +290,7 @@ export async function POST(request: NextRequest) {
 
     try {
       const existingId = sessionResult.data?.id
-      if (existingId) {
+      if (existingId && !isNewDay) {
         const { error } = await supabase
           .schema('public')
           .from('sessions')
@@ -297,6 +298,7 @@ export async function POST(request: NextRequest) {
           .eq('id', existingId)
         if (error) console.error('[buddy] session update error:', error)
       } else {
+        // Insert new row: either no session exists, or it's a new trading day (preserve old day's record)
         const { error } = await supabase
           .schema('public')
           .from('sessions')
