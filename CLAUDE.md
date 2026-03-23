@@ -23,14 +23,15 @@ Think Tony Stark and Jarvis — the buddy no trader has ever had.
 - Database: Supabase (PostgreSQL)
 - Auth: Supabase Auth
 - Storage: Supabase Storage
-- AI Agents: 4-agent pipeline + SaveDetector
+- AI Agents: 6-agent pipeline
   → Extractor (Haiku) — field extraction
-  → Context (Haiku) — data fetching + pgvector memory retrieval
+  → Context (Pure TS, no AI) — data fetching from Supabase
   → Analyst (Haiku) — pattern detection, background
   → Buddy (Sonnet) — natural conversation, plain text
   → SaveDetector (Haiku) — save decision
+  → Scribe (Haiku) — psychological memory builder, fires post-response via after()
 - Agent Parser: shared lib/claude/parser.ts
-- Memory: Supabase pgvector + OpenAI text-embedding-3-small (replaced Mem0)
+- Memory: Supabase weight-ranked retrieval — ARCHITECTURE UNDER REVIEW (see STATUS.md)
 - Database Facts: Supabase PostgreSQL (trades, rules, accounts)
 - Voice V1: Web Speech API (free) + Web Speech Synthesis (free)
 - Voice V2: Whisper (input) + ElevenLabs (output) — after launch
@@ -91,11 +92,12 @@ tradingbrew/
 ## Memory Architecture
 - Supabase → FACTS (trades, prices, rules)
 - Supabase memories table → INSIGHTS (written by Scribe agent)
-  → Columns: content, memory_type, weight (1-10), buddy_instruction
-  → Retrieved by weight DESC + created_at DESC (top 10)
-  → No embeddings needed — weight-ranked retrieval
+  → Columns: content, memory_type, weight (1-10), buddy_instruction, created_at
+  → Currently retrieved by weight DESC + created_at DESC (top 10)
+  → pgvector available but not active — semantic retrieval not yet wired
 - Context packet per conversation: today's data + rules + prop firm + news + top 10 memories
 - Backend orchestrates all — Claude never touches memory directly
+- ⚠️ OPEN: Memory architecture under review — living memory / semantic search / Mem0 decision pending
 
 ## Agent Architecture — 5 Agent Pipeline
 
@@ -188,7 +190,7 @@ SCRIBE (Haiku)
      soft delete, incomplete badge
 - ✅ 4-agent pipeline live (Extractor, Context, 
      Analyst, Buddy + SaveDetector)
-- ✅ Memory: Supabase pgvector + OpenAI embeddings (replaced Mem0 — zero per-call cost)
+- ✅ Memory: Supabase weight-ranked retrieval (Scribe writes, Context reads top 10)
 - ✅ Session management (daily reset, caching)
 - ✅ Conversation history (20 messages)
 - ✅ Trades saving with all fields
@@ -203,9 +205,12 @@ SCRIBE (Haiku)
 - ✅ Agent fixes (retry logic, parser fix,
      Analyst injection, trade collision handling,
      max_tokens, emotion_tag consistency)
+- ✅ Test suite: 46/46 passing (parser, extractor, analyst, scribe, save-detector, pipeline)
+- ⬜ Memory architecture upgrade (living memory / semantic / Mem0 — decision pending)
+- ⬜ Chart screenshots (Lightweight Charts + yahoo-finance2 — designed, not built)
 - ⬜ Performance dashboard
 - ⬜ News alerts
-- ⬜ Tauri desktop app 
+- ⬜ Tauri desktop app
 
 ## Coding Rules
 - TypeScript always, no any types
