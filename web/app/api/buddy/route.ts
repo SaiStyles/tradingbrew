@@ -232,14 +232,6 @@ export async function POST(request: NextRequest) {
           console.log('[scribe] wrote:', memory.type, '| weight:', memory.weight)
         }
 
-        const rawUpdates = scribeOutput.profile_updates
-        const updates = Object.fromEntries(
-          Object.entries(rawUpdates).filter(([, v]) => v !== null && v !== undefined)
-        )
-        if (Object.keys(updates).length > 0) {
-          await supabase.from('users').update(updates).eq('id', user.id)
-          console.log('[scribe] profile updated:', Object.keys(updates).join(', '))
-        }
       } catch (err) {
         console.error('[scribe] background failed:', err)
       }
