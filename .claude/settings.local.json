@@ -18,7 +18,8 @@
       "WebFetch(domain:www.tradovate.com)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:community.tradovate.com)",
-      "WebFetch(domain:tradovate.com)"
+      "WebFetch(domain:tradovate.com)",
+      "WebSearch"
     ]
   }
 }

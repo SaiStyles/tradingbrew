@@ -90,17 +90,16 @@ tradingbrew/
 
 ## Memory Architecture
 - Supabase → FACTS (trades, prices, rules)
-- Supabase pgvector → INSIGHTS (patterns, personality, emotional context)
-  → Embeddings via OpenAI text-embedding-3-small
-  → Stored in memories table (content + vector columns)
-  → Retrieved via search_memories SQL function (cosine similarity)
-  → lib/memory/memory.ts — writeMemory + readMemories
-- Context packet per conversation: today's data + rules + prop firm + news + top 5 memories
-- Backend orchestrates both — Claude never touches memory directly
+- Supabase memories table → INSIGHTS (written by Scribe agent)
+  → Columns: content, memory_type, weight (1-10), buddy_instruction
+  → Retrieved by weight DESC + created_at DESC (top 10)
+  → No embeddings needed — weight-ranked retrieval
+- Context packet per conversation: today's data + rules + prop firm + news + top 10 memories
+- Backend orchestrates all — Claude never touches memory directly
 
-## Agent Architecture — 4 Agent Pipeline
+## Agent Architecture — 5 Agent Pipeline
 
-Every buddy message runs through 4 agents in sequence:
+Every buddy message runs through this pipeline:
 
 EXTRACTOR (Haiku)
 - Input: raw user message + trading timezone
@@ -108,10 +107,10 @@ EXTRACTOR (Haiku)
 - No history, no personality, pure extraction
 - Runs on every message
 
-CONTEXT (Haiku)
-- Input: user_id + today's date + instrument
+CONTEXT (Pure TypeScript — no AI call)
+- Input: user_id + today's date
 - Output: context packet containing:
-  → Top 5 pgvector memories (insights, patterns)
+  → Top 10 memories by weight from Supabase memories table
   → Today's trades summary + P&L
   → Active rules
   → Prop firm status
@@ -146,8 +145,23 @@ SAVE DETECTOR (Haiku)
   opened_at, emotion_tag, execution_score
 - Never judges data quality
 - Never detects patterns
-- Duplicate prevention via [SYSTEM: Trade already saved] 
+- Duplicate prevention via [SYSTEM: Trade already saved]
   messages in conversation history
+
+SCRIBE (Haiku)
+- Runs after every Buddy response — fire-and-forget, never blocks
+- Input: message, buddy reply, extracted, context,
+  last 8 messages, existing memories
+- Output: memories + profile_updates (JSON only)
+- Writes to: memories table + users profile columns
+- The all-knower — builds psychological portrait of trader over time
+- Sees everything. Writes only what matters.
+- AI owns all judgment: type, weight, buddy_instruction
+- Never writes what happened — writes what it means
+- should_write: false is valid and frequent — silence is discipline
+- Users profile columns it can update:
+  trading_style, psychological_tendency, primary_edge,
+  primary_blind_spot, tilt_trigger, recovery_pattern, buddy_approach
 
 ## Buddy Rules — CRITICAL
 - Never reference memory directly — FEEL understood not watched

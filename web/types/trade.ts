@@ -121,3 +121,26 @@ export interface TradeRecord {
   deleted_at: string | null
   created_at: string
 }
+
+export interface ScribeMemory {
+  type: string
+  content: string
+  weight: number
+  buddy_instruction: string | null
+}
+
+export interface ScribeProfileUpdates {
+  trading_style: string | null
+  psychological_tendency: string | null
+  primary_edge: string | null
+  primary_blind_spot: string | null
+  tilt_trigger: string | null
+  recovery_pattern: string | null
+  buddy_approach: string | null
+}
+
+export interface ScribeOutput {
+  should_write: boolean
+  memories: ScribeMemory[]
+  profile_updates: Partial<ScribeProfileUpdates>
+}

@@ -1,13 +1,13 @@
 import { createClient } from '@/lib/supabase/server'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import type { ChatMessage, AnalystReport, ExtractedData } from '@/types/trade'
 import { runExtractor } from './agents/extractor'
 import { runContext } from './agents/context'
 import { runAnalyst } from './agents/analyst'
 import { runBuddy } from './agents/buddy'
 import { runSaveDetector } from './agents/save-detector'
+import { runScribe } from './agents/scribe'
 import { getTodayInTz, nowInTz } from './timezone'
-import { writeMemory } from '@/lib/memory/memory'
 
 // ------------------------------------------------------------------
 // Types
@@ -207,7 +207,45 @@ export async function POST(request: NextRequest) {
         .catch(err => console.error('[violations] write failed:', err))
     }
 
-    // Step 7: Update conversation history
+    // Step 7: Scribe — runs after response is sent, guaranteed by next/server after()
+    after(async () => {
+      try {
+        const scribeOutput = await runScribe({
+          message,
+          buddyReply,
+          extracted,
+          context,
+          recentMessages: session.messages.slice(-8),
+          existingMemories: context.memories,
+        })
+        if (!scribeOutput.should_write) return
+
+        for (const memory of scribeOutput.memories) {
+          await supabase.from('memories').insert({
+            user_id: user.id,
+            content: memory.content,
+            memory_type: memory.type,
+            weight: memory.weight,
+            buddy_instruction: memory.buddy_instruction,
+            created_at: new Date().toISOString(),
+          })
+          console.log('[scribe] wrote:', memory.type, '| weight:', memory.weight)
+        }
+
+        const rawUpdates = scribeOutput.profile_updates
+        const updates = Object.fromEntries(
+          Object.entries(rawUpdates).filter(([, v]) => v !== null && v !== undefined)
+        )
+        if (Object.keys(updates).length > 0) {
+          await supabase.from('users').update(updates).eq('id', user.id)
+          console.log('[scribe] profile updated:', Object.keys(updates).join(', '))
+        }
+      } catch (err) {
+        console.error('[scribe] background failed:', err)
+      }
+    })
+
+    // Step 8 (was 7): Update conversation history
     const updatedMessages: ChatMessage[] = [
       ...session.messages,
       { role: 'user' as const, content: message },
@@ -225,7 +263,7 @@ export async function POST(request: NextRequest) {
       console.log('[buddy] SAVING TRADE:', JSON.stringify(td, null, 2))
       try {
         const closedAt = td.closed_at ?? nowInTz(tradingTimezone)
-        const incomplete = !td.opened_at || !td.closed_at || !td.direction
+        const incomplete = !td.opened_at || !td.direction
 
         const { data: insertedTrade, error: insertError } = await supabase
           .from('trades')
@@ -260,19 +298,7 @@ export async function POST(request: NextRequest) {
             content: `[SYSTEM: Trade already saved — ${td.instrument} ${td.direction} $${td.pnl} at ${td.opened_at}. Do not save this trade again under any circumstances.]`,
           })
 
-          // WRITE 1 — trade insight (fire-and-forget)
-          const t = insertedTrade
-          if (t) {
-            const tradeInsight = `${tradingDate}: Trader closed ${t.instrument} ${t.direction} with ${(t.pnl ?? 0) > 0 ? '+' : ''}$${t.pnl} PnL. Execution score: ${t.execution_score}/10. Emotion: ${t.emotion_tag}. Followed plan: ${t.followed_plan ? 'yes' : 'no'}. Entry: ${t.opened_at}. Exit: ${t.closed_at}.${t.incomplete ? ' Trade data incomplete.' : ''}`
-            writeMemory(user.id, tradeInsight).catch(e => console.log('[mem0] write error:', e))
-          }
-
-          // WRITE 2 — session insight (fire-and-forget)
-          if (context.todaysTradeCount > 0) {
-            const toStrings = (arr: unknown[]): string => arr.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join(', ') || 'none'
-            const sessionInsight = `${tradingDate}: Session summary. Trades: ${context.todaysTradeCount}. Total PnL: ${context.todaysPnL > 0 ? '+' : ''}$${context.todaysPnL.toFixed(2)}. Patterns: ${toStrings(analysis?.patterns ?? [])}. Warnings: ${toStrings(analysis?.warnings ?? [])}. Violations: ${toStrings(analysis?.violations?.map(v => v.reasoning) ?? [])}.`
-            writeMemory(user.id, sessionInsight).catch(e => console.log('[mem0] write error:', e))
-          }
+          // Memory is handled by Scribe (fires after every Buddy response)
         }
       } catch (e) {
         console.error('[buddy] trade save exception:', e)

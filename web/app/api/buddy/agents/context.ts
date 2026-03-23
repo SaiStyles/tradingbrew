@@ -1,13 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
 import type { ContextPacket, TradeRecord, AccountRecord, NewsEvent } from '@/types/trade'
 import { getTodayInTz, getISOOffset } from '../timezone'
-import { readMemories } from '@/lib/memory/memory'
 
 const EMPTY: ContextPacket = {
   todaysTrades: [],
   todaysPnL: 0,
   todaysTradeCount: 0,
-  activeRules: [],
   active_rules: [],
   propFirmAccount: null,
   upcomingNews: [],
@@ -28,10 +26,25 @@ export async function runContext(
     const todayStart = `${todayDate}T00:00:00${offset}`
     const twoHoursFromNow = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
 
-    // Use cached memories if available — skip Mem0 round-trip
-    const memoriesPromise = cachedMemories !== undefined
+    // Use cached memories if available — otherwise fetch top memories by weight from Supabase
+    const memoriesPromise: Promise<string[]> = cachedMemories !== undefined
       ? Promise.resolve(cachedMemories)
-      : readMemories(userId, 'trading patterns behavior psychology emotion')
+      : supabase
+          .from('memories')
+          .select('content, weight, buddy_instruction')
+          .eq('user_id', userId)
+          .order('weight', { ascending: false })
+          .order('created_at', { ascending: false })
+          .limit(10)
+          .then(({ data }) =>
+            (data ?? []).map((m: Record<string, unknown>) => {
+              let text = (m.content as string) ?? ''
+              if (m.buddy_instruction) {
+                text += ` [Buddy note: ${m.buddy_instruction as string}]`
+              }
+              return text
+            })
+          )
 
     const [tradesResult, rulesResult, accountResult, newsResult, memories] = await Promise.all([
       supabase
@@ -78,7 +91,6 @@ export async function runContext(
       todaysTrades: trades,
       todaysPnL: pnl,
       todaysTradeCount: trades.length,
-      activeRules: [],
       active_rules: rulesData
         .filter(r => r.raw_text)
         .map(r => ({ id: r.id as string, raw_text: r.raw_text as string })),
