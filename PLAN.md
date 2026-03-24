@@ -1,5 +1,17 @@
 # TradingBrew — Plan
-> Last updated: 2026-03-24 (Session 6)
+> Last updated: 2026-03-24 (Session 7)
+
+## Session 7 — DONE ✅
+- Buddy personality overhaul — real friend, 1-2 sentences, text message energy, no robot behavior
+- Model routing fix — Buddy Haiku by default, Sonnet only for intervention_needed=true (~29% cost reduction)
+- Analyst prompt: "no missing fields" rule extended to warnings + patterns; "no account setup commentary"
+- Buddy prompt: position_size added to never-ask list; entry time clarified in natural order
+- Route integration tests added — 6 tests, full pipeline with real Claude API
+- Scribe tested directly — 4 scenarios, all pass, [Buddy:] tags working correctly
+- Duplicate trade root cause identified: double-send guard missing in BuddyChat (fix pending)
+- Hindsight credits depleted — memory disabled, needs top-up at Vectorize
+- Known cosmetic: SYSTEM marker occasionally leaks into Buddy reply (fix later)
+- Test suite: 73 tests total (67 + 6 scribe direct — all pass)
 
 ## Session 6 — DONE ✅
 - Full agent prompt overhaul (all 5 agents)
@@ -40,17 +52,26 @@
 3. ✅ Historical context (7-day trades, weekly stats, streak)
 4. ~~Chart screenshots~~ — abandoned
 5. Performance dashboard
-6. News alerts (news_events table already exists)
-7. Event-driven Buddy (news trigger + end-of-day debrief)
-8. X/Twitter watchlist (user-defined accounts, trading + personal)
-9. Tauri desktop app (V2, post-launch)
-10. ElevenLabs voice (V2)
+6. Multi-account day-start picker (Option 3)
+   - On new trading day + multiple accounts → UI shows one-tap account picker before first message
+   - Single account → auto-assign silently, no picker shown
+   - active_account_id stored in session conversation_state
+   - Route reads active_account_id, passes matched account to Context + Analyst
+   - Context fetches all accounts (not just limit(1))
+   - Buddy never asks administrative questions
+7. News alerts (news_events table already exists)
+8. Event-driven Buddy (news trigger + end-of-day debrief)
+9. X/Twitter watchlist (user-defined accounts, trading + personal)
+10. Tauri desktop app (V2, post-launch)
+11. ElevenLabs voice (V2)
 
 ---
 
 ## Next Session — Start Here
 
 1. Read STATUS.md + CLAUDE.md + PLAN.md
-2. Build performance dashboard (traders need to see their stats — daily habit driver)
-3. Then: News alert triggers (news_events table exists, just needs Buddy hook)
-4. Then: Event-driven Buddy (end-of-day debrief)
+2. Top up Hindsight/Vectorize credits (memory fully down without it)
+3. Fix BuddyChat double-send guard (one-liner, prevents duplicate trades)
+4. Build performance dashboard (traders need to see their stats — daily habit driver)
+5. Then: Persona selection UI (settings page — backend already works, just needs UI)
+6. Then: News alert triggers (news_events table exists, just needs Buddy hook)

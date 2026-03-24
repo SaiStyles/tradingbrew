@@ -27,7 +27,7 @@ Think Tony Stark and Jarvis — the buddy no trader has ever had.
   → Extractor (Haiku) — field extraction
   → Context (Pure TS, no AI) — data fetching from Supabase + Hindsight recall
   → Analyst (Haiku) — pattern detection, background
-  → Buddy (Sonnet) — natural conversation, plain text
+  → Buddy (Haiku default, Sonnet only when intervention_needed=true) — natural conversation, plain text
   → SaveDetector (Haiku) — save decision
   → Scribe (Haiku) — psychological memory builder, fires post-response via after()
 - Agent Parser: shared lib/claude/parser.ts
@@ -41,12 +41,14 @@ Think Tony Stark and Jarvis — the buddy no trader has ever had.
 ## Buddy Personality System — KEY V1 FEATURE
 - User can choose ANY personality — viral hook
 - Default options: Friendly Mentor, Drill Sergeant, Zen Master, Gordon Gekko
-- Custom: user types anything — "Batman", "Andrew Tate" — Claude adapts
+- Custom: user types anything — "Jack Sparrow", "Gordon Gekko", "Batman" — Claude adapts fully
 - Stored in users.buddy_personality
-- V1: personality in text only
-- V2: matching ElevenLabs voice
-- NEVER real celebrity voice cloning — legal risk
+- V1: personality in text only — already works today
+- V2: matching ElevenLabs voice — character voices from ElevenLabs community library
+- NEVER real celebrity voice cloning — legal risk. "Jack Sparrow voice" = stylistic approximation, not Johnny Depp
 - Buddy name customizable → users.buddy_name
+- Viral hook: combo of character voice + character text = screenshot moments ("greed is good, but that stop loss wasn't")
+- Low cost (Haiku) = low barrier = big user base = acquisition proof for firm sales
 
 ## Voice Design
 - Toggle ON/OFF — never always-on without consent

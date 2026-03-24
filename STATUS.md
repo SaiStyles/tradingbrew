@@ -38,7 +38,6 @@ AI trading companion (Jarvis for traders). Web app built on Next.js 15 + Supabas
 - Trading timezone support
 - Settings page (timezone, buddy name, personality, account, notifications)
 - Rules manager (NL rules, AI enforcement, violation tracking, sidebar badge)
-- Haiku/Sonnet routing (Buddy uses Haiku for non-trade messages)
 - **Agent overhaul (Session 6)**:
   - All 5 agent prompts restructured (system/user split, caching, tighter rules)
   - Buddy: PATTERN CLAIMS guard, HISTORICAL DATA rules, SYSTEM marker handling, judgment-based field reference detection
@@ -50,15 +49,38 @@ AI trading companion (Jarvis for traders). Web app built on Next.js 15 + Supabas
   - Settings API security fix: field whitelist prevents raw body passthrough
   - `entry_price`, `exit_price`, `stop_loss` removed from pipeline (ExtractedData, agents, route)
   - Chart screenshots: abandoned (CME futures not covered by available data providers)
-- Test suite: 61 tests (46 original + 15 chat scenario stress tests — all pass)
+- **Buddy personality overhaul (Session 6 late)**:
+  - Complete prompt rewrite — from data-collection robot to genuine friend
+  - Voice: text message energy, casual + direct, never professional/robotic
+  - Default response: 1-2 sentences always, match user's energy
+  - No steering back to trading, no unsolicited advice, no dashboard reading
+  - Only volunteer opinions when directly asked; one honest line, then back to them
+  - Analyst data is background texture — mostly ignored unless intervention_needed or clear violation
+  - `position_size` added to never-ask list; stale "prices" example removed
+  - Analyst: "no missing fields" rule extended to warnings + patterns; "no account setup commentary" added
+- **Model routing fix (Session 6 late)**:
+  - Buddy: Haiku by default (was Sonnet for any trade message)
+  - Sonnet fires only when `intervention_needed = true` (crisis mode)
+  - ~73% cheaper per Buddy call, ~29% overall pipeline cost reduction
+- **Route integration tests added (Session 6 late)**:
+  - `web/__tests__/route-integration.test.ts` — 6 tests, full pipeline with mocked Supabase + real Claude API
+  - Tests: 401 auth, 400 bad body, small talk, full trade save, incomplete trade, session context
+- Test suite: 67 tests (46 original + 15 chat scenarios + 6 route integration — all pass)
 
 ### DB — Clean as of Session 5
 - Dead psychological profile columns dropped from users table
 - `memories` table dropped (replaced by Hindsight)
 - `milestones`, `progress`, `emotions` tables dropped (never used)
 
+### Known Drift to Watch
+- **Analyst (Haiku) missing fields warning** — prompt says "don't flag missing fields anywhere" but Haiku occasionally sneaks it into warnings as "mid-execution fields missing". Not breaking, not worth fixing now. Monitor on next real user session.
+- **Buddy asks exit time instead of entry time** — "when" in natural order is ambiguous, Buddy sometimes asks "when did you close?" before entry time. Not breaking (trade saves fine), leaving for now.
+- **SYSTEM marker leaks into Buddy reply** — after a save, Buddy sometimes echoes [SYSTEM: Trade already saved] text visibly in reply. Cosmetic only, fix later.
+- **Hindsight credits depleted** — all retain/recall/reflect calls are 402-ing. Memory disabled until credits are topped up at Vectorize account.
+
 ### Pending / Not Built
-- Performance dashboard
+- Performance dashboard (V1: charts + filters — PnL by day, instrument win rate, hour of day, emotion vs PnL)
+- Voice note replay in dashboard — show AI reply + trader message as audio (V2)
 - ~~Chart screenshots~~ — abandoned (CME futures data unavailable from Polygon/yahoo-finance2)
 - News alerts + event-driven Buddy triggers
 - X/Twitter watchlist (user-defined accounts)
@@ -79,7 +101,7 @@ Step 2: Extractor (Haiku) + Context (pure TS) + Portrait (reflect) — ALL paral
     - Portrait: reflect() with 3s timeout, cached per trading day
     ↓
 Step 3: Buddy + Analyst + SaveDetector — ALL parallel
-    - Buddy: Sonnet if has_trade or active violations, else Haiku
+    - Buddy: Haiku by default, Sonnet only when intervention_needed=true
     - Analyst: runs if has_trade OR session.messages.length > 0
     - SaveDetector: runs if has_trade OR session.messages.length > 0
     ↓
