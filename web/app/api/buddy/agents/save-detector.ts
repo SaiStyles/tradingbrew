@@ -6,15 +6,14 @@ import { withRetry } from '@/lib/claude/retry'
 
 interface SaveDetectorParams {
   messages: ChatMessage[]
-  buddyReply: string
   extracted: ExtractedData
   tradingDate: string
   tradingTimezone: string
 }
 
 export async function runSaveDetector(params: SaveDetectorParams): Promise<BuddyResponse> {
-  const { messages, buddyReply, extracted, tradingDate, tradingTimezone } = params
-  const fallback: BuddyResponse = { reply: buddyReply, save_trade: false, trade_data: null }
+  const { messages, extracted, tradingDate, tradingTimezone } = params
+  const fallback: BuddyResponse = { reply: '', save_trade: false, trade_data: null }
 
   try {
     const apiKey = process.env.ANTHROPIC_API_KEY
@@ -93,7 +92,7 @@ trade_data is null when save_trade is false.`
     const raw = result.content[0].type === 'text' ? '{' + result.content[0].text : ''
     const parsed = parseJSON<BuddyResponse>(raw)
     if (!parsed) return fallback
-    return { ...parsed, reply: buddyReply }
+    return { ...parsed, reply: '' }
   } catch (e) {
     console.error('[save-detector] failed:', e)
     return fallback

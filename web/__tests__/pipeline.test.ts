@@ -12,10 +12,17 @@ const emptyContext: ContextPacket = {
   todaysTrades: [],
   todaysTradeCount: 0,
   todaysPnL: 0,
+  todayWinRate: 0,
+  todayAvgPnL: 0,
+  weeklyPnL: 0,
+  weeklyTradeCount: 0,
+  weeklyWinRate: 0,
+  currentStreak: null,
   active_rules: [],
-  propFirmAccount: null,
+  account: null,
   memories: [],
   upcomingNews: [],
+  dataError: false,
 }
 
 /**
@@ -47,7 +54,6 @@ describe('Pipeline integration (live API)', () => {
     ]
     const saveResult = await runSaveDetector({
       messages,
-      buddyReply: 'Nice trade! Execution was solid.',
       extracted,
       tradingDate: DATE,
       tradingTimezone: TZ,
@@ -82,7 +88,6 @@ describe('Pipeline integration (live API)', () => {
     ]
     const saveResult = await runSaveDetector({
       messages,
-      buddyReply: 'How did it go?',
       extracted,
       tradingDate: DATE,
       tradingTimezone: TZ,

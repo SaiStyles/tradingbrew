@@ -54,18 +54,28 @@ export async function POST(request: NextRequest) {
     }
     const { message } = body as { message: string }
 
-    // Step 1: Load profile + session in parallel
-    const [profileResult, sessionResult] = await Promise.all([
-      supabase.from('users').select('*').eq('id', user.id).single(),
-      supabase
-        .schema('public')
-        .from('sessions')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('started_at', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
+    // Step 1: Load profile + session in parallel, 4s timeout
+    const step1Timeout = new Promise<null>(resolve => setTimeout(() => resolve(null), 4000))
+    const step1Result = await Promise.race([
+      Promise.all([
+        supabase.from('users').select('id, buddy_name, buddy_personality, trading_timezone, buddy_voice_id').eq('id', user.id).single(),
+        supabase
+          .schema('public')
+          .from('sessions')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('started_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]),
+      step1Timeout,
     ])
+
+    if (!step1Result) {
+      console.error('[buddy] step 1 timeout — proceeding with defaults')
+    }
+
+    const [profileResult, sessionResult] = step1Result ?? [{ data: null }, { data: null }]
 
     const profile = profileResult.data
     const tradingTimezone = (profile?.trading_timezone as string | null) ?? 'America/New_York'
@@ -166,10 +176,10 @@ export async function POST(request: NextRequest) {
         ? runAnalyst(extracted, context).catch(() => null)
         : Promise.resolve(null),
       (extracted.has_trade || session.messages.length > 0)
-        ? runSaveDetector({ messages: conversationSoFar, buddyReply: '', extracted, tradingDate, tradingTimezone })
+        ? runSaveDetector({ messages: conversationSoFar, extracted, tradingDate, tradingTimezone })
         : Promise.resolve({ reply: '', save_trade: false, trade_data: null }),
     ])
-    const saveResult = { ...saveResultRaw, reply: buddyReply }
+    const saveResult = saveResultRaw
     console.log('[agents] buddy + analyst + save-detector parallel:', Date.now() - t1, 'ms')
     console.log('[debug] shouldRunAnalyst:', shouldRunAnalyst, '| has_trade:', extracted.has_trade, '| useHaiku:', useHaiku)
     console.log('[save-detector] result:', JSON.stringify({ save_trade: saveResult.save_trade, instrument: saveResult.trade_data?.instrument, pnl: saveResult.trade_data?.pnl }))

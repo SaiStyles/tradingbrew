@@ -70,10 +70,17 @@ export interface ContextPacket {
   todaysTrades: TradeRecord[]
   todaysPnL: number
   todaysTradeCount: number
+  todayWinRate: number
+  todayAvgPnL: number
+  weeklyPnL: number
+  weeklyTradeCount: number
+  weeklyWinRate: number
+  currentStreak: { type: 'win' | 'loss'; count: number } | null
   active_rules: Array<{ id: string; raw_text: string }>
-  propFirmAccount: AccountRecord | null
+  account: AccountRecord | null
   upcomingNews: NewsEvent[]
   memories: string[]
+  dataError: boolean
 }
 
 export interface AnalystReport {

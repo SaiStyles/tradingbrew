@@ -29,7 +29,6 @@ describe('SaveDetector agent (live API)', () => {
   it('saves trade when all minimum fields present', async () => {
     const result = await runSaveDetector({
       messages: fullConversation,
-      buddyReply: 'Great session!',
       extracted: { ...emptyExtracted, has_trade: true, instrument: 'NQ', direction: 'long', pnl: 400 },
       tradingDate: DATE,
       tradingTimezone: TZ,
@@ -47,7 +46,6 @@ describe('SaveDetector agent (live API)', () => {
     ]
     const result = await runSaveDetector({
       messages: partial,
-      buddyReply: 'What score would you give your execution?',
       extracted: { ...emptyExtracted, has_trade: true },
       tradingDate: DATE,
       tradingTimezone: TZ,
@@ -61,7 +59,6 @@ describe('SaveDetector agent (live API)', () => {
     ]
     const result = await runSaveDetector({
       messages: partial,
-      buddyReply: 'How were you feeling?',
       extracted: { ...emptyExtracted, has_trade: true },
       tradingDate: DATE,
       tradingTimezone: TZ,
@@ -80,7 +77,6 @@ describe('SaveDetector agent (live API)', () => {
     ]
     const result = await runSaveDetector({
       messages: withMarker,
-      buddyReply: '',
       extracted: { ...emptyExtracted, has_trade: true },
       tradingDate: DATE,
       tradingTimezone: TZ,
@@ -96,7 +92,6 @@ describe('SaveDetector agent (live API)', () => {
     ]
     const result = await runSaveDetector({
       messages: shortConvo,
-      buddyReply: 'Got it.',
       extracted: { ...emptyExtracted, has_trade: true },
       tradingDate: DATE,
       tradingTimezone: TZ,
@@ -109,7 +104,6 @@ describe('SaveDetector agent (live API)', () => {
   it('execution_score is clamped 1-10 in route (verify it returns a number)', async () => {
     const result = await runSaveDetector({
       messages: fullConversation,
-      buddyReply: '',
       extracted: { ...emptyExtracted, has_trade: true },
       tradingDate: DATE,
       tradingTimezone: TZ,

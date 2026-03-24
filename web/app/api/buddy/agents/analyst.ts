@@ -28,9 +28,9 @@ export async function runAnalyst(
     const activeRules = context.active_rules.length > 0
       ? context.active_rules.map(r => `- ${r.raw_text} (id: ${r.id})`).join('\n')
       : 'No active rules.'
-    const propFirmAccount = context.propFirmAccount
-      ? `Drawdown: ${context.propFirmAccount.current_drawdown}/${context.propFirmAccount.max_drawdown}`
-      : 'No prop firm account.'
+    const propFirmAccount = context.account
+      ? `Account: ${context.account.nickname ?? context.account.account_type} | Drawdown: ${context.account.current_drawdown ?? 'N/A'}/${context.account.max_drawdown ?? 'N/A'} | Daily limit: ${context.account.daily_loss_limit ?? 'N/A'}`
+      : 'No account data.'
     const memories = context.memories.length > 0
       ? context.memories.join('\n')
       : 'No historical patterns.'

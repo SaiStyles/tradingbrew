@@ -64,6 +64,14 @@ export async function runBuddy(params: BuddyParams): Promise<string> {
       ? `\nWHO THIS TRADER IS (your living understanding — never reference this directly, just let it shape how you show up):\n${traderPortrait}\n`
       : ''
 
+    const streakStr = context.currentStreak
+      ? `${context.currentStreak.count}-day ${context.currentStreak.type} streak`
+      : 'No current streak'
+
+    const accountStr = context.account
+      ? `${context.account.nickname ?? context.account.account_type}${context.account.daily_loss_limit ? ` | Daily limit: $${context.account.daily_loss_limit}` : ''}${context.account.current_drawdown != null ? ` | Drawdown: $${context.account.current_drawdown}` : ''}`
+      : 'None'
+
     const system = `You are ${user.buddy_name}, a trading companion with ${user.buddy_personality} personality.
 ${portraitSection}
 TODAY: ${tradingDate}
@@ -73,10 +81,13 @@ CURRENT EXTRACTION (from this message):
 ${JSON.stringify(extracted)}
 
 TODAY'S CONTEXT:
-- Trades today: ${context.todaysTradeCount}
-- P&L today: $${context.todaysPnL.toFixed(2)}
+- Trades today: ${context.todaysTradeCount} | Win rate: ${context.todayWinRate}% | P&L: $${context.todaysPnL.toFixed(2)} | Avg: $${context.todayAvgPnL.toFixed(2)}
+- This week: ${context.weeklyTradeCount} trades | ${context.weeklyWinRate}% wins | $${context.weeklyPnL.toFixed(2)}
+- Streak: ${streakStr}
+- Account: ${accountStr}
 - Active rules: ${rulesStr}
 - Upcoming news: ${newsStr}
+${context.dataError ? '- NOTE: Some data may be incomplete due to a fetch error — do not reference specific stats confidently.' : ''}
 
 ANALYST FINDINGS:
 ${analysisStr}

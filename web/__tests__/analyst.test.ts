@@ -16,10 +16,17 @@ const emptyContext: ContextPacket = {
   todaysTrades: [],
   todaysTradeCount: 0,
   todaysPnL: 0,
+  todayWinRate: 0,
+  todayAvgPnL: 0,
+  weeklyPnL: 0,
+  weeklyTradeCount: 0,
+  weeklyWinRate: 0,
+  currentStreak: null,
   active_rules: [],
-  propFirmAccount: null,
+  account: null,
   memories: [],
   upcomingNews: [],
+  dataError: false,
 }
 
 function makeTrade(overrides: Partial<TradeRecord>): TradeRecord {
