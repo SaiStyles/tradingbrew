@@ -91,12 +91,8 @@ describe('Scribe agent (live API)', () => {
     })
     if (result.should_write) {
       for (const mem of result.memories) {
-        expect(typeof mem.content).toBe('string')
-        expect(mem.content.length).toBeGreaterThan(0)
-        expect(typeof mem.weight).toBe('number')
-        expect(mem.weight).toBeGreaterThanOrEqual(1)
-        expect(mem.weight).toBeLessThanOrEqual(10)
-        expect(mem.buddy_instruction === null || typeof mem.buddy_instruction === 'string').toBe(true)
+        expect(typeof mem).toBe('string')
+        expect(mem.length).toBeGreaterThan(0)
       }
     }
   })
@@ -115,7 +111,8 @@ describe('Scribe agent (live API)', () => {
     })
     if (result.should_write) {
       for (const mem of result.memories) {
-        expect(mem.weight).toBeLessThan(7)
+        expect(typeof mem).toBe('string')
+        expect(mem.length).toBeGreaterThan(0)
       }
     }
   })
@@ -137,7 +134,7 @@ describe('Scribe agent (live API)', () => {
     if (result.should_write) {
       for (const mem of result.memories) {
         // Should add something new, not repeat the same observation verbatim
-        expect(mem.content.toLowerCase()).not.toBe(existingMemories[0].toLowerCase())
+        expect(mem.toLowerCase()).not.toBe(existingMemories[0].toLowerCase())
       }
     }
   })

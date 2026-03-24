@@ -122,13 +122,7 @@ export interface TradeRecord {
   created_at: string
 }
 
-export interface ScribeMemory {
-  content: string
-  weight: number
-  buddy_instruction: string | null
-}
-
 export interface ScribeOutput {
   should_write: boolean
-  memories: ScribeMemory[]
+  memories: string[]
 }

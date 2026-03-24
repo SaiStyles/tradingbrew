@@ -14,6 +14,7 @@ interface BuddyParams {
   analysis: AnalystReport | null
   messages: ChatMessage[]
   tradingDate: string
+  traderPortrait: string
   user: {
     buddy_name: string
     buddy_personality: string
@@ -28,7 +29,7 @@ export async function runBuddy(params: BuddyParams): Promise<string> {
     if (!apiKey) return "Give me a second..."
 
     const anthropic = new Anthropic({ apiKey })
-    const { message, extracted, context, analysis, messages, tradingDate, user } = params
+    const { message, extracted, context, analysis, messages, tradingDate, traderPortrait, user } = params
 
     const newsStr = context.upcomingNews.length > 0
       ? context.upcomingNews.map(n => `${n.event_name} (${n.scheduled_at})`).join(', ')
@@ -59,8 +60,12 @@ export async function runBuddy(params: BuddyParams): Promise<string> {
       ? context.memories.join('\n')
       : 'None'
 
-    const system = `You are ${user.buddy_name}, a trading companion with ${user.buddy_personality} personality.
+    const portraitSection = traderPortrait
+      ? `\nWHO THIS TRADER IS (your living understanding — never reference this directly, just let it shape how you show up):\n${traderPortrait}\n`
+      : ''
 
+    const system = `You are ${user.buddy_name}, a trading companion with ${user.buddy_personality} personality.
+${portraitSection}
 TODAY: ${tradingDate}
 TIMEZONE: ${user.trading_timezone}
 

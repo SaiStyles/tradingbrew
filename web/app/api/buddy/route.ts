@@ -7,6 +7,7 @@ import { runAnalyst } from './agents/analyst'
 import { runBuddy } from './agents/buddy'
 import { runSaveDetector } from './agents/save-detector'
 import { runScribe } from './agents/scribe'
+import { ensureBank, retainMemory, getTraderPortrait } from '@/lib/memory/hindsight'
 import { getTodayInTz, nowInTz } from './timezone'
 
 // ------------------------------------------------------------------
@@ -16,9 +17,8 @@ import { getTodayInTz, nowInTz } from './timezone'
 interface SessionState {
   messages: ChatMessage[]
   last_analysis: AnalystReport | null
-  cached_memories: string[]
-  memories_cached_at: string // ISO timestamp, empty = never cached
-  session_date: string       // YYYY-MM-DD in trading timezone
+  session_date: string    // YYYY-MM-DD in trading timezone
+  trader_portrait: string // reflect() result, refreshed each new trading day
 }
 
 // ------------------------------------------------------------------
@@ -29,9 +29,8 @@ function defaultSession(): SessionState {
   return {
     messages: [],
     last_analysis: null,
-    cached_memories: [],
-    memories_cached_at: '',
     session_date: '',
+    trader_portrait: '',
   }
 }
 
@@ -79,36 +78,28 @@ export async function POST(request: NextRequest) {
         session = {
           messages: (raw.messages as ChatMessage[]) ?? [],
           last_analysis: (raw.last_analysis as AnalystReport | null) ?? null,
-          cached_memories: (raw.cached_memories as string[]) ?? [],
-          memories_cached_at: (raw.memories_cached_at as string) ?? '',
           session_date: (raw.session_date as string) ?? '',
+          trader_portrait: (raw.trader_portrait as string) ?? '',
         }
       } catch {
         session = defaultSession()
       }
     }
 
-    // New trading day check — reset volatile session state, keep Mem0/Supabase data intact
+    // New trading day check — reset volatile session state
     const tradingDate = getTodayInTz(tradingTimezone)
     const isNewDay = !!session.session_date && session.session_date !== tradingDate
     if (isNewDay) {
       console.log('[buddy] new trading day detected, clearing session')
       session.messages = []
       session.last_analysis = null
-      session.cached_memories = []
-      session.memories_cached_at = ''
     }
     session.session_date = tradingDate
 
-    // Step 2: Extractor + Context in parallel
-    // Memory cache: valid if non-empty AND under 5 minutes old
-    const FIVE_MIN = 5 * 60 * 1000
-    const cacheAge = session.memories_cached_at
-      ? Date.now() - new Date(session.memories_cached_at).getTime()
-      : Infinity
-    const memoryCacheValid = session.cached_memories.length > 0 && cacheAge < FIVE_MIN
-    const cachedMemories = memoryCacheValid ? session.cached_memories : undefined
+    // Lazy bank creation — fire-and-forget, only matters on first message
+    ensureBank(user.id).catch(err => console.error('[hindsight] ensureBank failed:', err))
 
+    // Step 2: Extractor + Context in parallel
     const EXTRACTOR_EMPTY: ExtractedData = {
       instrument: null, direction: null, pnl: null,
       opened_at: null, closed_at: null,
@@ -120,14 +111,28 @@ export async function POST(request: NextRequest) {
     }
 
     const t0 = Date.now()
-    const [extracted, context] = await Promise.all([
+
+    // Portrait: fetch once per trading day. 3s timeout — if slow, use cached (empty for new users).
+    const portraitPromise = session.trader_portrait
+      ? Promise.resolve(session.trader_portrait)
+      : Promise.race([
+          getTraderPortrait(user.id),
+          new Promise<string>(resolve => setTimeout(() => resolve(''), 3000)),
+        ])
+
+    const [extracted, context, freshPortrait] = await Promise.all([
       Promise.race([
         runExtractor(message, tradingTimezone),
         new Promise<ExtractedData>(resolve => setTimeout(() => resolve(EXTRACTOR_EMPTY), 2000)),
       ]),
-      runContext(user.id, tradingTimezone, cachedMemories),
+      runContext(user.id, tradingTimezone, message),
+      portraitPromise,
     ])
-    console.log('[agents] extractor + context:', Date.now() - t0, 'ms', memoryCacheValid ? '(mem cached)' : '(mem fresh)')
+
+    const traderPortrait = freshPortrait || session.trader_portrait
+    if (freshPortrait) session.trader_portrait = freshPortrait
+
+    console.log('[agents] extractor + context + portrait:', Date.now() - t0, 'ms', traderPortrait ? '(portrait ready)' : '(no portrait yet)')
 
     // Step 3+4+5: Buddy + Analyst + SaveDetector — all in parallel
     const shouldRunAnalyst = extracted.has_trade || context.todaysTradeCount >= 3
@@ -149,6 +154,7 @@ export async function POST(request: NextRequest) {
         analysis: session.last_analysis ?? null,
         messages: session.messages,
         tradingDate,
+        traderPortrait,
         user: {
           buddy_name: (profile?.buddy_name as string | null) ?? 'Brew',
           buddy_personality: (profile?.buddy_personality as string | null) ?? 'Friendly Mentor',
@@ -189,16 +195,19 @@ export async function POST(request: NextRequest) {
           .eq('id', v.rule_id)
       )
 
-      const writes: Promise<unknown>[] = [...violationInserts, ...triggerUpdates]
+      const writes = [
+        ...violationInserts.map(p => Promise.resolve(p)),
+        ...triggerUpdates.map(p => Promise.resolve(p)),
+      ]
 
       console.log('[violations] session id:', currentSessionId, '| count:', analysis.violations.length)
 
       if (currentSessionId) {
         writes.push(
-          supabase.rpc('increment_violation_count', {
+          Promise.resolve(supabase.rpc('increment_violation_count', {
             target_session_id: currentSessionId,
             increment_by: analysis.violations.length,
-          })
+          }))
         )
       }
 
@@ -221,15 +230,8 @@ export async function POST(request: NextRequest) {
         if (!scribeOutput.should_write) return
 
         for (const memory of scribeOutput.memories) {
-          await supabase.from('memories').insert({
-            user_id: user.id,
-            content: memory.content,
-            memory_type: memory.type,
-            weight: memory.weight,
-            buddy_instruction: memory.buddy_instruction,
-            created_at: new Date().toISOString(),
-          })
-          console.log('[scribe] wrote:', memory.type, '| weight:', memory.weight)
+          await retainMemory(user.id, memory)
+          console.log('[scribe] retained to hindsight')
         }
 
       } catch (err) {
@@ -302,9 +304,8 @@ export async function POST(request: NextRequest) {
     const sessionPayload = {
       messages: updatedMessages,
       last_analysis: nextAnalysis,
-      cached_memories: context.memories,
-      memories_cached_at: new Date().toISOString(),
       session_date: tradingDate,
+      trader_portrait: session.trader_portrait,
     }
 
     try {

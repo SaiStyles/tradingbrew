@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { recallMemories } from '@/lib/memory/hindsight'
 import type { ContextPacket, TradeRecord, AccountRecord, NewsEvent } from '@/types/trade'
 import { getTodayInTz, getISOOffset } from '../timezone'
 
@@ -15,7 +16,7 @@ const EMPTY: ContextPacket = {
 export async function runContext(
   userId: string,
   tradingTimezone: string,
-  cachedMemories?: string[]
+  message: string,
 ): Promise<ContextPacket> {
   try {
     const supabase = await createClient()
@@ -25,26 +26,6 @@ export async function runContext(
     const offset = getISOOffset(tradingTimezone)
     const todayStart = `${todayDate}T00:00:00${offset}`
     const twoHoursFromNow = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
-
-    // Use cached memories if available — otherwise fetch top memories by weight from Supabase
-    const memoriesPromise: Promise<string[]> = cachedMemories !== undefined
-      ? Promise.resolve(cachedMemories)
-      : supabase
-          .from('memories')
-          .select('content, weight, buddy_instruction')
-          .eq('user_id', userId)
-          .order('weight', { ascending: false })
-          .order('created_at', { ascending: false })
-          .limit(10)
-          .then(({ data }) =>
-            (data ?? []).map((m: Record<string, unknown>) => {
-              let text = (m.content as string) ?? ''
-              if (m.buddy_instruction) {
-                text += ` [Buddy note: ${m.buddy_instruction as string}]`
-              }
-              return text
-            })
-          )
 
     const [tradesResult, rulesResult, accountResult, newsResult, memories] = await Promise.all([
       supabase
@@ -75,7 +56,7 @@ export async function runContext(
         .lte('scheduled_at', twoHoursFromNow)
         .eq('impact', 'high')
         .order('scheduled_at', { ascending: true }),
-      memoriesPromise,
+      recallMemories(userId, message),
     ])
 
     if (tradesResult.error) console.error('[context] trades fetch error:', tradesResult.error)
