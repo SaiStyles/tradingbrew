@@ -40,7 +40,8 @@ export async function runAnalyst(
 Your job: analyze what's happening with this trader RIGHT NOW — rule violations, behavioral patterns, emotional state, what's going well.
 
 INSTRUCTIONS:
-- Reason about what is known. Do not flag missing fields as violations — they are simply not collected yet.
+- Reason about what is known. Do not flag missing fields anywhere — not as violations, not as warnings, not as patterns. Incomplete data means the conversation is still in progress. This is normal.
+- Do not comment on account setup, whether the trader has rules configured, or what they haven't set up. Only analyze actual trade behavior and psychology.
 - For each active rule, judge whether current data suggests it is broken or at risk. Rules are personal commitments — interpret with judgment, not as formulas:
   "after 2 losses" → check loss streak | "when frustrated" → check emotion | "first 2 hours" → check timestamps
   Ambiguous rules → err on the side of surfacing (use severity "warning")
