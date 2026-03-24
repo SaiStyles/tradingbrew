@@ -19,6 +19,7 @@ interface SessionState {
   last_analysis: AnalystReport | null
   session_date: string    // YYYY-MM-DD in trading timezone
   trader_portrait: string // reflect() result, refreshed each new trading day
+  last_trade_id: string | null // ID of last saved trade — used to patch late fields (e.g. execution_score)
 }
 
 // ------------------------------------------------------------------
@@ -31,6 +32,7 @@ function defaultSession(): SessionState {
     last_analysis: null,
     session_date: '',
     trader_portrait: '',
+    last_trade_id: null,
   }
 }
 
@@ -90,6 +92,7 @@ export async function POST(request: NextRequest) {
           last_analysis: (raw.last_analysis as AnalystReport | null) ?? null,
           session_date: (raw.session_date as string) ?? '',
           trader_portrait: (raw.trader_portrait as string) ?? '',
+          last_trade_id: (raw.last_trade_id as string | null) ?? null,
         }
       } catch {
         session = defaultSession()
@@ -113,8 +116,7 @@ export async function POST(request: NextRequest) {
     const EXTRACTOR_EMPTY: ExtractedData = {
       instrument: null, direction: null, pnl: null,
       opened_at: null, closed_at: null,
-      entry_price: null, exit_price: null,
-      stop_loss: null, position_size: null,
+      position_size: null,
       emotion: null, execution_score: null,
       followed_plan: null, confirmed: false,
       declined: false, has_trade: false,
@@ -145,7 +147,7 @@ export async function POST(request: NextRequest) {
     console.log('[agents] extractor + context + portrait:', Date.now() - t0, 'ms', traderPortrait ? '(portrait ready)' : '(no portrait yet)')
 
     // Step 3+4+5: Buddy + Analyst + SaveDetector — all in parallel
-    const shouldRunAnalyst = extracted.has_trade || context.todaysTradeCount >= 3
+    const shouldRunAnalyst = extracted.has_trade || session.messages.length > 0
     const useHaiku = !extracted.has_trade && (
       !session.last_analysis ||
       (session.last_analysis.violations.length === 0 && session.last_analysis.warnings.length === 0)
@@ -275,9 +277,9 @@ export async function POST(request: NextRequest) {
             user_id: user.id,
             instrument: td.instrument ?? '',
             direction: td.direction ?? null,
-            entry_price: td.entry_price ?? null,
-            exit_price: td.exit_price ?? null,
-            stop_loss: td.stop_loss ?? null,
+            entry_price: null,
+            exit_price: null,
+            stop_loss: null,
             pnl: td.pnl ?? null,
             position_size: td.position_size ?? null,
             opened_at: td.opened_at ?? null,
@@ -297,6 +299,7 @@ export async function POST(request: NextRequest) {
         } else {
           console.log('[buddy] trade saved:', insertedTrade?.id)
           savedTrade = insertedTrade
+          session.last_trade_id = insertedTrade?.id ?? null
           updatedMessages.push({
             role: 'user' as const,
             content: `[SYSTEM: Trade already saved — ${td.instrument} ${td.direction} $${td.pnl} at ${td.opened_at}. Do not save this trade again under any circumstances.]`,
@@ -309,6 +312,21 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Step 8b: Patch late execution_score onto last saved trade (if trade already saved but score just came in)
+    if (!saveResult.save_trade && session.last_trade_id && extracted.execution_score != null) {
+      const clamped = Math.min(10, Math.max(1, Math.round(extracted.execution_score)))
+      supabase
+        .from('trades')
+        .update({ execution_score: clamped })
+        .eq('id', session.last_trade_id)
+        .eq('user_id', user.id)
+        .is('execution_score', null)
+        .then(({ error }) => {
+          if (error) console.error('[buddy] execution_score patch failed:', error)
+          else console.log('[buddy] execution_score patched on trade:', session.last_trade_id)
+        })
+    }
+
     // Step 9: Persist session state
     const nextAnalysis = analysis ?? session.last_analysis ?? null
     const sessionPayload = {
@@ -316,6 +334,7 @@ export async function POST(request: NextRequest) {
       last_analysis: nextAnalysis,
       session_date: tradingDate,
       trader_portrait: session.trader_portrait,
+      last_trade_id: session.last_trade_id,
     }
 
     try {

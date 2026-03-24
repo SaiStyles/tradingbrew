@@ -46,9 +46,19 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
     }
 
+    const input = body as Record<string, unknown>
+    const allowed = ['trading_timezone', 'buddy_name', 'buddy_personality', 'notif_morning', 'notif_news', 'notif_violations', 'notif_debrief']
+    const update: Record<string, unknown> = {}
+    for (const key of allowed) {
+      if (key in input) update[key] = input[key]
+    }
+    if (Object.keys(update).length === 0) {
+      return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 })
+    }
+
     const { data, error } = await supabase
       .from('users')
-      .update(body as Record<string, unknown>)
+      .update(update)
       .eq('id', user.id)
       .select()
       .single()

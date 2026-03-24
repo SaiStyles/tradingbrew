@@ -5,8 +5,7 @@ import type { ExtractedData, ContextPacket, TradeRecord } from '@/types/trade'
 const emptyExtracted: ExtractedData = {
   instrument: null, direction: null, pnl: null,
   opened_at: null, closed_at: null,
-  entry_price: null, exit_price: null,
-  stop_loss: null, position_size: null,
+  position_size: null,
   emotion: null, execution_score: null,
   followed_plan: null, confirmed: false,
   declined: false, has_trade: false,

@@ -8,8 +8,7 @@ const DATE = '2026-03-23'
 const emptyExtracted: ExtractedData = {
   instrument: null, direction: null, pnl: null,
   opened_at: null, closed_at: null,
-  entry_price: null, exit_price: null,
-  stop_loss: null, position_size: null,
+  position_size: null,
   emotion: null, execution_score: null,
   followed_plan: null, confirmed: false,
   declined: false, has_trade: false,
@@ -38,11 +37,9 @@ describe('SaveDetector agent (live API)', () => {
     expect(result.trade_data?.pnl).toBe(400)
   })
 
-  it('does NOT save when execution_score missing', async () => {
+  it('does NOT save when opened_at missing', async () => {
     const partial: ChatMessage[] = [
-      { role: 'user', content: 'NQ long, made $300' },
-      { role: 'assistant', content: 'Nice! When and what emotion?' },
-      { role: 'user', content: 'entered 9:30am, felt calm' },
+      { role: 'user', content: 'NQ long, made $300, felt calm' },
     ]
     const result = await runSaveDetector({
       messages: partial,

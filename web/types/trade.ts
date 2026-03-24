@@ -11,9 +11,6 @@ export interface ExtractedData {
   pnl: number | null
   opened_at: string | null
   closed_at: string | null
-  entry_price: number | null
-  exit_price: number | null
-  stop_loss: number | null
   position_size: number | null
   emotion: string | null
   execution_score: number | null

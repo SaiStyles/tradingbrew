@@ -1,5 +1,5 @@
 # TradingBrew — Current Status
-> Last updated: 2026-03-24 (Session 5)
+> Last updated: 2026-03-24 (Session 6)
 
 ## What This Is
 AI trading companion (Jarvis for traders). Web app built on Next.js 15 + Supabase + Anthropic API.
@@ -39,7 +39,18 @@ AI trading companion (Jarvis for traders). Web app built on Next.js 15 + Supabas
 - Settings page (timezone, buddy name, personality, account, notifications)
 - Rules manager (NL rules, AI enforcement, violation tracking, sidebar badge)
 - Haiku/Sonnet routing (Buddy uses Haiku for non-trade messages)
-- Test suite: 46 tests (all pass when credits available)
+- **Agent overhaul (Session 6)**:
+  - All 5 agent prompts restructured (system/user split, caching, tighter rules)
+  - Buddy: PATTERN CLAIMS guard, HISTORICAL DATA rules, SYSTEM marker handling, judgment-based field reference detection
+  - Analyst: proper system prompt with cache_control, valid intervention_type enum, no hardcoded gate (runs on any active convo)
+  - SaveDetector: execution_score made optional, duplicate prevention tightened (all 4 fields must match), multi-trade clarity
+  - Extractor: price fields removed completely, has_trade tightened, emotion normalization added
+  - Scribe: concrete WRITE/DON'T WRITE examples, 3-memory-per-session cap
+  - `last_trade_id` session field: late execution_score patching after save
+  - Settings API security fix: field whitelist prevents raw body passthrough
+  - `entry_price`, `exit_price`, `stop_loss` removed from pipeline (ExtractedData, agents, route)
+  - Chart screenshots: abandoned (CME futures not covered by available data providers)
+- Test suite: 61 tests (46 original + 15 chat scenario stress tests — all pass)
 
 ### DB — Clean as of Session 5
 - Dead psychological profile columns dropped from users table
@@ -48,7 +59,7 @@ AI trading companion (Jarvis for traders). Web app built on Next.js 15 + Supabas
 
 ### Pending / Not Built
 - Performance dashboard
-- Chart screenshots (Lightweight Charts + yahoo-finance2)
+- ~~Chart screenshots~~ — abandoned (CME futures data unavailable from Polygon/yahoo-finance2)
 - News alerts + event-driven Buddy triggers
 - X/Twitter watchlist (user-defined accounts)
 - ElevenLabs voice (V2)
@@ -69,7 +80,7 @@ Step 2: Extractor (Haiku) + Context (pure TS) + Portrait (reflect) — ALL paral
     ↓
 Step 3: Buddy + Analyst + SaveDetector — ALL parallel
     - Buddy: Sonnet if has_trade or active violations, else Haiku
-    - Analyst: runs if has_trade OR todaysTradeCount >= 3
+    - Analyst: runs if has_trade OR session.messages.length > 0
     - SaveDetector: runs if has_trade OR session.messages.length > 0
     ↓
 Step 4: Write rule violations (fire-and-forget)

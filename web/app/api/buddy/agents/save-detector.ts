@@ -35,21 +35,20 @@ A trade is ready when the conversation contains ALL of these fields:
 - pnl (dollar amount trader made or lost)
 - opened_at (entry time)
 - emotion_tag (how trader felt)
-- execution_score (number 1-10)
 
 These fields are optional but include if mentioned:
+- execution_score (number 1-10)
 - closed_at (exit time)
-- entry_price
-- exit_price
-- stop_loss
 - position_size
 - followed_plan
 
 MULTIPLE TRADES RULE:
-If the conversation contains multiple trades, save only the most recently discussed trade — the one Buddy is currently collecting fields for. Ignore earlier trades that already have a [SYSTEM: Trade already saved] marker in the conversation history. Never mix fields from two different trades.
+If the conversation contains multiple trades, save only the most recently discussed trade — the one Buddy is currently collecting fields for. The current trade is the first trade AFTER the most recent [SYSTEM: Trade already saved] marker. Never mix fields from two different trades.
 
 DUPLICATE RULE — ONLY exception to saving:
-If conversation contains a message starting with [SYSTEM: Trade already saved] that matches this trade's instrument + pnl → return save_trade: false
+If conversation contains [SYSTEM: Trade already saved] that matches this trade on ALL of: instrument + direction + pnl + opened_at → return save_trade: false.
+If any of those fields differ, it is a different trade and SHOULD be saved.
+Two identical-looking trades at different times are not duplicates.
 
 For everything else:
 If minimum fields present → save_trade: true
@@ -71,7 +70,7 @@ Return ONLY valid JSON:
 {"save_trade":false,"trade_data":null,"reply":""}
 
 If save_trade is true:
-{"save_trade":true,"trade_data":{"instrument":null,"direction":null,"pnl":null,"opened_at":null,"closed_at":null,"entry_price":null,"exit_price":null,"stop_loss":null,"position_size":null,"emotion_tag":null,"execution_score":null,"followed_plan":null},"reply":""}
+{"save_trade":true,"trade_data":{"instrument":null,"direction":null,"pnl":null,"opened_at":null,"closed_at":null,"position_size":null,"emotion_tag":null,"execution_score":null,"followed_plan":null},"reply":""}
 
 reply is always empty string.
 trade_data is null when save_trade is false.`

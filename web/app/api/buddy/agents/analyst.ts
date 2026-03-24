@@ -35,21 +35,38 @@ export async function runAnalyst(
       ? context.memories.join('\n')
       : 'No historical patterns.'
 
-    const userContent = `You are a trading psychologist and performance analyst. You have access to:
+    const systemPrompt = `You are a trading performance analyst and psychologist embedded in an AI trading companion.
 
-CURRENT TRADE (being collected, may be incomplete):
+Your job: analyze what's happening with this trader RIGHT NOW — rule violations, behavioral patterns, emotional state, what's going well.
+
+INSTRUCTIONS:
+- Reason about what is known. Do not flag missing fields as violations — they are simply not collected yet.
+- For each active rule, judge whether current data suggests it is broken or at risk. Rules are personal commitments — interpret with judgment, not as formulas:
+  "after 2 losses" → check loss streak | "when frustrated" → check emotion | "first 2 hours" → check timestamps
+  Ambiguous rules → err on the side of surfacing (use severity "warning")
+- Think psychologically, not mechanically. You are reading a human being, not checking boxes.
+- intervention_needed: true only for serious situations — active revenge trading, emotional breakdown, account at risk, trader in clear distress
+- intervention_type valid values: "revenge_trading" | "emotional_distress" | "account_at_risk" | "loss_streak" | "overtrading" | "rule_cascade" | null
+
+OUTPUT: Return ONLY valid JSON. No prose. No explanation.
+
+{"violations":[{"rule_id":"<exact id from rules>","severity":"warning","reasoning":"1-2 sentences explaining what triggered this, written for a trading coach not a system log."}],"warnings":[],"patterns":[],"positives":[],"intervention_needed":false,"intervention_type":null}
+
+violations: rule violations only — use exact rule_id. severity: "warning" = at risk, "violation" = clearly broken.
+warnings: plain strings — psychological/behavioral concerns not tied to a specific rule.
+patterns: plain strings — recurring behaviors you can identify from session data.
+positives: plain strings — genuine strengths worth acknowledging.
+All array items must be plain strings except violations (which are objects).`
+
+    const userContent = `CURRENT TRADE (being collected, may be incomplete):
 instrument: ${extracted?.instrument ?? 'not yet provided'}
 direction: ${extracted?.direction ?? 'not yet provided'}
 pnl: ${extracted?.pnl ?? 'not yet provided'}
 opened_at: ${extracted?.opened_at ?? 'not yet provided'}
 closed_at: ${extracted?.closed_at ?? 'not yet provided'}
-entry_price: ${extracted?.entry_price ?? 'not yet provided'}
-exit_price: ${extracted?.exit_price ?? 'not yet provided'}
 emotion_tag: ${extracted?.emotion ?? 'not yet provided'}
 execution_score: ${extracted?.execution_score ?? 'not yet provided'}
 followed_plan: ${extracted?.followed_plan ?? 'not yet provided'}
-
-Reason about what is known. Do not flag missing fields as violations or warnings — they are simply not collected yet. Focus on what the available data tells you about patterns, rule adherence, and trader state.
 
 TODAY'S SESSION:
 ${todaysTrades}
@@ -57,52 +74,20 @@ ${todaysTrades}
 ACTIVE TRADER RULES:
 ${activeRules}
 
-For each rule above, reason about whether the current trade data, session behavior, or emotional
-state suggests this rule is being broken or is at risk of being broken.
-
-Rules are personal commitments, not formulas. Interpret them with judgment:
-- "after 2 losses" means consider the loss streak
-- "when frustrated" means consider emotion field
-- "first 2 hours" means consider trade timestamps
-- Ambiguous rules → err on the side of surfacing
-
-PROP FIRM ACCOUNT:
+ACCOUNT:
 ${propFirmAccount}
 
-HISTORICAL PATTERNS FROM MEMORY:
-${memories}
-
-Look at everything above holistically.
-Think like a psychologist, not an accountant.
-
-What patterns do you see?
-What concerns you about this trader right now?
-What's going well that deserves acknowledgment?
-Is any immediate intervention needed?
-
-Trust your judgment completely.
-You are not checking boxes.
-You are reading a human being.
-
-Return ONLY valid JSON with these exact fields:
-{"violations":[{"rule_id":"<id from rules above>","severity":"warning","reasoning":"One sentence. What specifically triggered this."}],"warnings":[],"patterns":[],"positives":[],"intervention_needed":false,"intervention_type":null}
-
-violations: array of rule violations (use rule_id from ACTIVE TRADER RULES above). Empty array if none.
-severity: "warning" if at risk, "violation" if clearly broken.
-reasoning: write as if explaining to a coach, not a system. Never say "rule violated".
-warnings: array of plain strings — general behavioral/psychological concerns not tied to a specific rule. Each item must be a plain string, never an object.
-patterns: array of plain strings — recurring behavioral patterns observed. Each item must be a plain string, never an object.
-positives: array of plain strings — what the trader is doing well. Each item must be a plain string, never an object.
-intervention_type: string describing the intervention type, or null if none needed`
+HISTORICAL PATTERNS:
+${memories}`
 
     console.log('[analyst] extracted received:', JSON.stringify(extracted))
-    console.log('[analyst] userContent preview:', userContent.substring(0, 500))
     console.log('[analyst] input size:', userContent.length, 'chars | model: claude-haiku-4-5-20251001')
     console.log('[analyst] calling claude...')
 
     const result = await withRetry(() => anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 1000,
+      system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
       messages: [
         { role: 'user', content: userContent },
         { role: 'assistant', content: '{' },

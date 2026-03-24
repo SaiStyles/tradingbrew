@@ -155,7 +155,8 @@ SAVE DETECTOR (Haiku)
 - Output: save_trade boolean + trade_data
 - One job: detect if minimum fields exist
 - Minimum fields: instrument, direction, pnl,
-  opened_at, emotion_tag, execution_score
+  opened_at, emotion_tag
+- execution_score: optional (asked last, never blocks save)
 - Never judges data quality
 - Never detects patterns
 - Duplicate prevention via [SYSTEM: Trade already saved]

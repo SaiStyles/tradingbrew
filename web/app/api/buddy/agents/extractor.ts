@@ -7,8 +7,7 @@ import { withRetry } from '@/lib/claude/retry'
 const FAILED: ExtractedData = {
   instrument: null, direction: null, pnl: null,
   opened_at: null, closed_at: null,
-  entry_price: null, exit_price: null,
-  stop_loss: null, position_size: null,
+  position_size: null,
   emotion: null, execution_score: null,
   followed_plan: null,
   confirmed: false, declined: false, has_trade: false,
@@ -44,18 +43,18 @@ When extracting times:
 - If AM/PM not stated, infer from context (9:30 = 09:30 AM for US markets).
 
 Return this exact JSON structure:
-{"instrument":null,"direction":null,"pnl":null,"opened_at":null,"closed_at":null,"entry_price":null,"exit_price":null,"stop_loss":null,"position_size":null,"emotion":null,"execution_score":null,"followed_plan":null,"confirmed":false,"declined":false,"has_trade":false}
+{"instrument":null,"direction":null,"pnl":null,"opened_at":null,"closed_at":null,"position_size":null,"emotion":null,"execution_score":null,"followed_plan":null,"confirmed":false,"declined":false,"has_trade":false}
 
 Field rules:
 - instrument: ticker symbol only (NQ, ES, AAPL, etc.)
 - direction: "long" or "short" only, null if not mentioned
-- pnl: number (positive or negative), null if not mentioned. If the trader explicitly states their PnL ('made $400', 'lost $200', 'up 400') — that is the PnL. Never calculate or override it from entry/exit prices. Stated PnL always wins. Only calculate PnL if trader never mentioned it at all.
-- emotion: one of: confident, hesitant, FOMO, revenge, bored, calm, frustrated, euphoric
+- pnl: number (positive or negative), null if not mentioned. If the trader explicitly states their PnL ('made $400', 'lost $200', 'up 400') — that is the PnL. Stated PnL always wins.
+- emotion: one of: confident, hesitant, FOMO, revenge, bored, calm, frustrated, euphoric. Map similar words (nervous→hesitant, panicked→frustrated, greedy→FOMO).
 - execution_score: 1-10 integer, null if not mentioned
-- followed_plan: true when trader says anything like 'i did', 'yes', 'followed it', 'stuck to the plan', 'disciplined', 'as planned'. false when trader says 'deviated', 'went off plan', 'shouldn't have', 'revenge', 'impulsive'. Use judgment — don't require exact phrases. null if not mentioned.
+- followed_plan: true when trader says anything like 'i did', 'yes', 'followed it', 'stuck to the plan', 'disciplined', 'as planned'. false when trader says 'deviated', 'went off plan', 'shouldn't have', 'revenge', 'impulsive'. Use judgment. null if not mentioned.
 - confirmed: true if user is agreeing/confirming in any natural way
 - declined: true if user is disagreeing, skipping, or saying no
-- has_trade: true if message describes a completed or in-progress trade`,
+- has_trade: true only if the message clearly describes a trade the user has already taken or is actively reporting — requires at minimum an instrument or a pnl or a direction. "I'm thinking about trading NQ" = false. "I took a NQ long" = true. "made $400 today" = true.`,
       messages: [
         { role: 'user', content: message },
         { role: 'assistant', content: '{' },
