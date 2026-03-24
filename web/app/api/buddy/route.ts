@@ -148,10 +148,7 @@ export async function POST(request: NextRequest) {
 
     // Step 3+4+5: Buddy + Analyst + SaveDetector — all in parallel
     const shouldRunAnalyst = extracted.has_trade || session.messages.length > 0
-    const useHaiku = !extracted.has_trade && (
-      !session.last_analysis ||
-      (session.last_analysis.violations.length === 0 && session.last_analysis.warnings.length === 0)
-    )
+    const useHaiku = !session.last_analysis?.intervention_needed
     const conversationSoFar: ChatMessage[] = [
       ...session.messages,
       { role: 'user' as const, content: message },
