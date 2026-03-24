@@ -25,13 +25,13 @@ Think Tony Stark and Jarvis — the buddy no trader has ever had.
 - Storage: Supabase Storage
 - AI Agents: 6-agent pipeline
   → Extractor (Haiku) — field extraction
-  → Context (Pure TS, no AI) — data fetching from Supabase
+  → Context (Pure TS, no AI) — data fetching from Supabase + Hindsight recall
   → Analyst (Haiku) — pattern detection, background
   → Buddy (Sonnet) — natural conversation, plain text
   → SaveDetector (Haiku) — save decision
   → Scribe (Haiku) — psychological memory builder, fires post-response via after()
 - Agent Parser: shared lib/claude/parser.ts
-- Memory: Supabase weight-ranked retrieval — ARCHITECTURE UNDER REVIEW (see STATUS.md)
+- Memory: Hindsight (gen2 agentic memory) — semantic recall, Mental Models, reflect()
 - Database Facts: Supabase PostgreSQL (trades, rules, accounts)
 - Voice V1: Web Speech API (free) + Web Speech Synthesis (free)
 - Voice V2: Whisper (input) + ElevenLabs (output) — after launch
@@ -81,25 +81,35 @@ tradingbrew/
 ```
 
 ## Database — 15 Tables
-- users (buddy_name, buddy_personality, buddy_voice_id)
+- users (buddy_name, buddy_personality, buddy_voice_id, trading_timezone)
 - accounts (NOT prop_firm_accounts — supports prop/personal/live/demo + nickname)
 - trades (includes account_id)
 - screenshots, rules, rule_violations, emotions
 - goals, streaks, milestones, memories, progress
 - news_events, user_news_interactions, sessions
 - DROPPED: prop_firm_accounts, content_feed
+- NOTE: psychological profile columns (tilt_trigger, primary_edge, buddy_approach etc.)
+  are dead — Hindsight Mental Models own this now, do not write or read them
 
-## Memory Architecture
-- Supabase → FACTS (trades, prices, rules)
-- Supabase memories table → INSIGHTS (written by Scribe agent)
-  → Columns: content, memory_type, weight (1-10), buddy_instruction, created_at
-  → Currently retrieved by weight DESC + created_at DESC (top 10)
-  → pgvector available but not active — semantic retrieval not yet wired
-- Context packet per conversation: today's data + rules + prop firm + news + top 10 memories
-- Backend orchestrates all — Claude never touches memory directly
-- ⚠️ OPEN: Memory architecture under review — living memory / semantic search / Mem0 decision pending
+## Memory Architecture — CURRENT (Session 4)
+- **Supabase** → FACTS (trades, rules, accounts) — unchanged
+- **Hindsight** → PSYCHOLOGICAL MEMORY (gen2, replaces memories table)
+  → `lib/memory/hindsight.ts` — singleton client
+  → `retain()` — Scribe writes plain text observations, async processing
+  → `recall()` — Context fetches relevant memories per message (semantic, budget: mid)
+  → `reflect()` — called once per trading day, returns living trader portrait for Buddy
+  → Mental Models — 4 auto-refreshing psychological questions per user bank:
+      tilt_trigger, primary_edge, buddy_approach, blind_spots
+  → Directives — 3 hard rules enforced on every reflect():
+      no direct memory reference, no financial advice, empathy first
+- **Bank ID**: `tradingbrew-{userId}` — per user, auto-created on first message
+- **Env vars**: HINDSIGHT_BASE_URL + HINDSIGHT_API_KEY (cloud or self-hosted)
+- **Trader Portrait**: reflect() result cached in session state, refreshed each trading day
+  → Buddy receives as "WHO THIS TRADER IS" section in system prompt
+  → Empty for new users, activates as Scribe builds observations
+- Supabase memories table still exists in schema but is no longer written to
 
-## Agent Architecture — 5 Agent Pipeline
+## Agent Architecture — 6 Agent Pipeline
 
 Every buddy message runs through this pipeline:
 
@@ -110,14 +120,14 @@ EXTRACTOR (Haiku)
 - Runs on every message
 
 CONTEXT (Pure TypeScript — no AI call)
-- Input: user_id + today's date
+- Input: user_id + trading timezone + current message
 - Output: context packet containing:
-  → Top 10 memories by weight from Supabase memories table
+  → Relevant memories via Hindsight recall() (semantic, query = current message)
   → Today's trades summary + P&L
   → Active rules
   → Prop firm status
   → Upcoming economic events (next 2 hours)
-- Runs in parallel with Extractor
+- Runs in parallel with Extractor + portrait fetch
 
 ANALYST (Haiku)
 - Input: extracted trade + context packet
@@ -128,9 +138,10 @@ ANALYST (Haiku)
 - AI judgment only — no hardcoded pattern rules
 
 BUDDY (Sonnet)
-- Input: extracted + context + analyst findings + state
+- Input: extracted + context + analyst findings + state + traderPortrait
 - Output: one natural reply only, no JSON ever
 - Owns: tone, empathy, personality, timing
+- Receives living trader portrait — never references it directly
 - Never references memory directly
 - Never gives financial advice
 
@@ -152,18 +163,15 @@ SAVE DETECTOR (Haiku)
 
 SCRIBE (Haiku)
 - Runs after every Buddy response — fire-and-forget, never blocks
-- Input: message, buddy reply, extracted, context,
-  last 8 messages, existing memories
-- Output: memories + profile_updates (JSON only)
-- Writes to: memories table + users profile columns
+- Input: message, buddy reply, extracted, context, last 8 messages, existing memories
+- Output: string[] — plain text observations (no weight, no type)
+- Writes to: Hindsight via retain() — Hindsight handles entity extraction,
+  weighting, observation synthesis, and Mental Model refreshes automatically
 - The all-knower — builds psychological portrait of trader over time
 - Sees everything. Writes only what matters.
-- AI owns all judgment: type, weight, buddy_instruction
 - Never writes what happened — writes what it means
 - should_write: false is valid and frequent — silence is discipline
-- Users profile columns it can update:
-  trading_style, psychological_tendency, primary_edge,
-  primary_blind_spot, tilt_trigger, recovery_pattern, buddy_approach
+- If memory has Buddy implication, adds [Buddy: specific note] inline
 
 ## Buddy Rules — CRITICAL
 - Never reference memory directly — FEEL understood not watched
@@ -179,26 +187,27 @@ SCRIBE (Haiku)
 - After a bad trade, Buddy reads the room first
 - Discipline comes from relationship, not locked features
 - Gentle nudge always beats a mandatory gate
-- Collect fields in order: instrument → direction → 
-  pnl → times → prices → emotion → followed_plan 
+- Collect fields in order: instrument → direction →
+  pnl → times → prices → emotion → followed_plan
   → execution_score (last, triggers save)
 
 ## Current Build Status
-- ✅ Auth, middleware, onboarding, dashboard, 
+- ✅ Auth, middleware, onboarding, dashboard,
      BuddyChat component, voice
-- ✅ Trade journal UI, journal API, trade drawer, 
+- ✅ Trade journal UI, journal API, trade drawer,
      soft delete, incomplete badge
-- ✅ 4-agent pipeline live (Extractor, Context, 
-     Analyst, Buddy + SaveDetector)
-- ✅ Memory: Supabase weight-ranked retrieval (Scribe writes, Context reads top 10)
-- ✅ Session management (daily reset, caching)
+- ✅ 6-agent pipeline live (Extractor, Context,
+     Analyst, Buddy, SaveDetector, Scribe)
+- ✅ Hindsight gen2 memory — semantic recall, Mental Models,
+     trader portrait via reflect(), Directives
+- ✅ Session management (daily reset, 20-message history)
 - ✅ Conversation history (20 messages)
 - ✅ Trades saving with all fields
 - ✅ Duplicate prevention via system messages
 - ✅ Shared JSON parser across all agents
 - ✅ Background Analyst (non-blocking)
 - ✅ Trading timezone support
-- ✅ Settings page (timezone, buddy name, 
+- ✅ Settings page (timezone, buddy name,
      personality, account setup, notifications)
 - ✅ Rules manager (NL rules, AI enforcement,
      violation tracking, sidebar badge)
@@ -206,7 +215,7 @@ SCRIBE (Haiku)
      Analyst injection, trade collision handling,
      max_tokens, emotion_tag consistency)
 - ✅ Test suite: 46/46 passing (parser, extractor, analyst, scribe, save-detector, pipeline)
-- ⬜ Memory architecture upgrade (living memory / semantic / Mem0 — decision pending)
+- ⬜ Historical context in Context (7-day trades, streaks, goals)
 - ⬜ Chart screenshots (Lightweight Charts + yahoo-finance2 — designed, not built)
 - ⬜ Performance dashboard
 - ⬜ News alerts
@@ -227,7 +236,7 @@ SCRIBE (Haiku)
 - Our code = infrastructure only
 - Agent behavior is controlled by prompt instructions,
   never by hardcoded logic
-- Before adding code to an agent → try prompt first 
+- Before adding code to an agent → try prompt first
 
 ## Windows/PowerShell Notes
 - Quotes for paths with parentheses: "app/(auth)"
@@ -242,8 +251,8 @@ SCRIBE (Haiku)
 3. Web first, Tauri after validation
 4. Never build outside the bible
 5. Refactor don't rebuild
-6. Instructions before code — before writing 
-   any logic, ask: "Can Claude handle this 
-   with better prompt instructions?" 
+6. Instructions before code — before writing
+   any logic, ask: "Can Claude handle this
+   with better prompt instructions?"
    If yes → update the prompt. If no → write code.
    90% of the time the answer is yes.
