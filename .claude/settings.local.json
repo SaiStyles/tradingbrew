@@ -19,7 +19,14 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:community.tradovate.com)",
       "WebFetch(domain:tradovate.com)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(npx vitest:*)",
+      "Bash(npm test:*)",
+      "WebFetch(domain:vectorize.io)",
+      "Bash(grep -E \"\\\\.md$|STATUS|TODO|NOTES\")",
+      "Bash(grep -r \"TODO\\\\|FIXME\\\\|BUG\\\\|XXX\\\\|HACK\" /c/Users/saist/tradingbrew/web --include=*.ts --include=*.tsx)",
+      "WebFetch(domain:hindsight.vectorize.io)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ]
   }
 }
