@@ -11,14 +11,15 @@ User hits a button, speaks freely — raw emotion, no structure needed.
 - Tech: MediaRecorder API (browser native, free)
 - Playback in trade drawer alongside the trade details
  
-## Conversational Analytics (Text-to-SQL)
+## ✅ Conversational Analytics (Text-to-SQL) — BUILT (Session 8)
 User asks any historical question in plain English — Buddy answers with real data + Hindsight psychology.
 - "How do I usually do at FOMC events?" / "What did I do on Oct 7th last year?" / "How do I trade Mondays?"
-- Extractor detects `query_type: "historical_analysis"` — Query Agent (Haiku) generates a SELECT-only SQL query
-- Context validates SELECT-only → runs against Supabase → Buddy gets facts + Hindsight recall → tells the full story
-- Safety: Supabase RLS enforces user_id scope at DB level (cross-user impossible) + our code rejects non-SELECT
-- No hardcoded windows or fields — AI decides what to query based on the question
-- Query Agent lives as a conditional branch inside Context (no new agent)
+- Extractor detects query_type + query_subtype (data / psychology / both)
+- Query Agent (Haiku) — chain-of-thought SQL, enriched schema, self-correction on errors
+- runAnalyticsQuery — validates SELECT-only, injects user_id, LIMIT 100, Supabase RPC
+- psychology-only questions skip SQL and go straight to Hindsight recall
+- Buddy gets historicalQuery results, tells the story (not a spreadsheet)
+- Requires one-time DB setup: docs/setup-analytics-function.sql
 - Moat: every other journal shows static charts. This is just ask → get answer. Nobody has this.
 
 ## Proactive Buddy (Event-Driven)

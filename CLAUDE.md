@@ -23,9 +23,10 @@ Think Tony Stark and Jarvis — the buddy no trader has ever had.
 - Database: Supabase (PostgreSQL)
 - Auth: Supabase Auth
 - Storage: Supabase Storage
-- AI Agents: 6-agent pipeline
-  → Extractor (Haiku) — field extraction
+- AI Agents: 7-agent pipeline
+  → Extractor (Haiku) — field extraction + query_type detection
   → Context (Pure TS, no AI) — data fetching from Supabase + Hindsight recall
+  → QueryAnalyst (Haiku) — text-to-SQL for historical questions, gated on query_type
   → Analyst (Haiku) — pattern detection, background
   → Buddy (Haiku default, Sonnet only when intervention_needed=true) — natural conversation, plain text
   → SaveDetector (Haiku) — save decision
@@ -93,7 +94,7 @@ tradingbrew/
 - NOTE: psychological profile columns (tilt_trigger, primary_edge, buddy_approach etc.)
   are dead — Hindsight Mental Models own this now, do not write or read them
 
-## Memory Architecture — CURRENT (Session 4)
+## Memory Architecture — CURRENT (Session 8)
 - **Supabase** → FACTS (trades, rules, accounts) — unchanged
 - **Hindsight** → PSYCHOLOGICAL MEMORY (gen2, replaces memories table)
   → `lib/memory/hindsight.ts` — singleton client
@@ -111,13 +112,15 @@ tradingbrew/
   → Empty for new users, activates as Scribe builds observations
 - Supabase memories table still exists in schema but is no longer written to
 
-## Agent Architecture — 6 Agent Pipeline
+## Agent Architecture — 7 Agent Pipeline
 
 Every buddy message runs through this pipeline:
 
 EXTRACTOR (Haiku)
 - Input: raw user message + trading timezone
 - Output: structured JSON fields only
+- Also detects: query_type ("historical_analysis" | null)
+  and query_subtype ("data" | "psychology" | "both" | null)
 - No history, no personality, pure extraction
 - Runs on every message
 
@@ -127,22 +130,37 @@ CONTEXT (Pure TypeScript — no AI call)
   → Relevant memories via Hindsight recall() (semantic, query = current message)
   → Today's trades summary + P&L
   → Active rules
-  → Prop firm status
+  → Account info
   → Upcoming economic events (next 2 hours)
+  → historicalQuery: null (populated by QueryAnalyst step)
 - Runs in parallel with Extractor + portrait fetch
+
+QUERY ANALYST (Haiku) — NEW
+- Gated on: extracted.query_type === "historical_analysis"
+- Input: natural language question + trading timezone + current date
+- Output: SELECT-only SQL with chain-of-thought reasoning
+- Enriched schema: semantic column descriptions, not just types
+- Self-correction: if SQL errors, retries once with error message
+- psychology-only questions (query_subtype = "psychology") skip SQL entirely
+- SQL executed via Supabase RPC run_analytics_query()
+  → Validates SELECT-only, injects user_id, enforces LIMIT 100
+  → Requires one-time setup: docs/setup-analytics-function.sql
+- Results injected into context.historicalQuery before Buddy runs
 
 ANALYST (Haiku)
 - Input: extracted trade + context packet
 - Output: violations, warnings, patterns
 - Detects: rule violations, revenge trading,
   overtrading, loss streaks, execution decline
-- Runs only when has_trade = true or 3+ trades today
+- Runs only when has_trade = true
 - AI judgment only — no hardcoded pattern rules
 
-BUDDY (Sonnet)
-- Input: extracted + context + analyst findings + state + traderPortrait
+BUDDY (Haiku default, Sonnet for interventions)
+- Input: extracted + context (incl. historicalQuery) + analyst findings + state + traderPortrait
 - Output: one natural reply only, no JSON ever
 - Owns: tone, empathy, personality, timing
+- For historical queries: tells the story behind the numbers
+  (max_tokens bumped to 500 when historicalQuery present)
 - Receives living trader portrait — never references it directly
 - Never references memory directly
 - Never gives financial advice
@@ -166,10 +184,14 @@ SAVE DETECTOR (Haiku)
 
 SCRIBE (Haiku)
 - Runs after every Buddy response — fire-and-forget, never blocks
-- Input: message, buddy reply, extracted, context, last 8 messages, existing memories
+- Input: message, buddy reply, extracted, context, last 8 messages,
+  existing memories, tradingTimezone
 - Output: string[] — plain text observations (no weight, no type)
 - Writes to: Hindsight via retain() — Hindsight handles entity extraction,
   weighting, observation synthesis, and Mental Model refreshes automatically
+- Always includes day of week (TODAY IS: Monday) — enables time-anchored
+  psychology recall ("what's my psychology on Mondays?")
+- Includes weekday name in observations when pattern is time-specific
 - The all-knower — builds psychological portrait of trader over time
 - Sees everything. Writes only what matters.
 - Never writes what happened — writes what it means
@@ -217,11 +239,15 @@ SCRIBE (Haiku)
 - ✅ Agent fixes (retry logic, parser fix,
      Analyst injection, trade collision handling,
      max_tokens, emotion_tag consistency)
-- ✅ Test suite: 46/46 passing (parser, extractor, analyst, scribe, save-detector, pipeline)
-- ⬜ Historical context in Context (7-day trades, streaks, goals)
-- ⬜ Chart screenshots (Lightweight Charts + yahoo-finance2 — designed, not built)
+- ✅ Test suite: 71/71 passing (parser, extractor, analyst, scribe, save-detector, pipeline, chat-scenarios, scribe-direct)
+- ✅ Conversational Analytics — Query Agent, text-to-SQL, self-correction loop,
+     Buddy storytelling, Supabase RPC executor (requires setup-analytics-function.sql)
+- ✅ Scribe time-anchoring — day of week in every observation,
+     enables "what's my psychology on Mondays?" recall
 - ⬜ Performance dashboard
+- ⬜ Proactive Buddy (event-driven, SSE push)
 - ⬜ News alerts
+- ⬜ Confession Mode (voice recording post-trade)
 - ⬜ Tauri desktop app
 
 ## Coding Rules
