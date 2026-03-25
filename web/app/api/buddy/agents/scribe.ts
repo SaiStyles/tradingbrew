@@ -87,7 +87,7 @@ DO NOT WRITE:
 - Temporary emotional states with no pattern behind them
 
 When you write — be precise. Say exactly what you see. One sentence is enough if it's the truth.
-Include the day of week when a pattern may be time-specific (e.g. "On Mondays, ..."). Omit it for clearly general traits.
+Every observation MUST start with "Today is {day}." using the day from TODAY IS above. No exceptions.
 
 If a memory has a specific implication for how Buddy should behave — add it at the end in brackets: [Buddy: don't push for reflection right after losses — let them breathe first]
 
