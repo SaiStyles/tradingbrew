@@ -12,6 +12,7 @@ const emptyExtracted: ExtractedData = {
   emotion: null, execution_score: null,
   followed_plan: null, confirmed: false,
   declined: false, has_trade: false,
+  query_type: null, query_subtype: null,
 }
 
 const fullConversation: ChatMessage[] = [

@@ -18,6 +18,7 @@ const emptyContext: ContextPacket = {
   weeklyPnL: 0, weeklyTradeCount: 0, weeklyWinRate: 0,
   currentStreak: null, active_rules: [], account: null,
   memories: [], upcomingNews: [], dataError: false,
+  historicalQuery: null,
 }
 
 const emptyExtracted: ExtractedData = {
@@ -25,6 +26,7 @@ const emptyExtracted: ExtractedData = {
   opened_at: null, closed_at: null, position_size: null,
   emotion: null, execution_score: null, followed_plan: null,
   confirmed: false, declined: false, has_trade: false,
+  query_type: null, query_subtype: null,
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -202,6 +204,7 @@ describe('Scenario 8: Scribe judgment on session quality', () => {
       context: emptyContext,
       recentMessages: [],
       existingMemories: [],
+      tradingTimezone: TZ,
     })
     console.log('[scenario8] should_write:', result.should_write, '| memories:', result.memories)
     expect(result.should_write).toBe(true)
@@ -216,6 +219,7 @@ describe('Scenario 8: Scribe judgment on session quality', () => {
       context: emptyContext,
       recentMessages: [],
       existingMemories: [],
+      tradingTimezone: TZ,
     })
     console.log('[scenario8b] should_write:', result.should_write)
     expect(result.should_write).toBe(false)

@@ -9,6 +9,7 @@ const emptyExtracted: ExtractedData = {
   emotion: null, execution_score: null,
   followed_plan: null, confirmed: false,
   declined: false, has_trade: false,
+  query_type: null, query_subtype: null,
 }
 
 const emptyContext: ContextPacket = {
@@ -26,6 +27,7 @@ const emptyContext: ContextPacket = {
   memories: [],
   upcomingNews: [],
   dataError: false,
+  historicalQuery: null,
 }
 
 describe('Scribe agent (live API)', () => {
@@ -37,6 +39,7 @@ describe('Scribe agent (live API)', () => {
       context: emptyContext,
       recentMessages: [],
       existingMemories: [],
+      tradingTimezone: 'America/New_York',
     })
     expect(result).toBeDefined()
     expect(typeof result.should_write).toBe('boolean')
@@ -54,6 +57,7 @@ describe('Scribe agent (live API)', () => {
         { role: 'assistant', content: 'Ha, not really my area! How is trading going today?' },
       ],
       existingMemories: [],
+      tradingTimezone: 'America/New_York',
     })
     // Scribe has judgment — silence is the correct default for trivial exchanges
     expect(typeof result.should_write).toBe('boolean')
@@ -76,6 +80,7 @@ describe('Scribe agent (live API)', () => {
       context: emptyContext,
       recentMessages: messages,
       existingMemories: [],
+      tradingTimezone: 'America/New_York',
     })
     expect(result.should_write).toBe(true)
     expect(result.memories.length).toBeGreaterThan(0)
@@ -94,6 +99,7 @@ describe('Scribe agent (live API)', () => {
       context: emptyContext,
       recentMessages: messages,
       existingMemories: [],
+      tradingTimezone: 'America/New_York',
     })
     if (result.should_write) {
       for (const mem of result.memories) {
@@ -114,6 +120,7 @@ describe('Scribe agent (live API)', () => {
         { role: 'assistant', content: 'Nice trade!' },
       ],
       existingMemories: [],
+      tradingTimezone: 'America/New_York',
     })
     if (result.should_write) {
       for (const mem of result.memories) {
@@ -136,6 +143,7 @@ describe('Scribe agent (live API)', () => {
         { role: 'user', content: 'lost again, revenge traded, I always do this' },
       ],
       existingMemories,
+      tradingTimezone: 'America/New_York',
     })
     if (result.should_write) {
       for (const mem of result.memories) {

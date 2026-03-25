@@ -18,6 +18,7 @@ const EMPTY: ContextPacket = {
   upcomingNews: [],
   memories: [],
   dataError: false,
+  historicalQuery: null,
 }
 
 function computeStreak(trades: TradeRecord[]): { type: 'win' | 'loss'; count: number } | null {
@@ -151,6 +152,7 @@ export async function runContext(
       upcomingNews: (newsResult.data ?? []) as NewsEvent[],
       memories,
       dataError,
+      historicalQuery: null,
     }
   } catch (e) {
     console.error('[context] unexpected error:', e)

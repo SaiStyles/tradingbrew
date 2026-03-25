@@ -60,6 +60,15 @@ export async function runBuddy(params: BuddyParams): Promise<string> {
       ? context.memories.join('\n')
       : 'None'
 
+    const historicalQueryStr = context.historicalQuery
+      ? `HISTORICAL QUERY: ${context.historicalQuery.query_description}
+${context.historicalQuery.results.length > 0
+  ? `DATA:\n${JSON.stringify(context.historicalQuery.results, null, 2)}`
+  : context.historicalQuery.error
+    ? `No data available (${context.historicalQuery.error})`
+    : 'No data found for this query.'}`
+      : null
+
     const portraitSection = traderPortrait
       ? `\nWHO THIS TRADER IS (your living understanding — never reference this directly, just let it shape how you show up):\n${traderPortrait}\n`
       : ''
@@ -96,7 +105,7 @@ ${violationsStr}
 
 PAST HISTORY:
 ${memoriesStr}
-
+${historicalQueryStr ? `\n${historicalQueryStr}\n` : ''}
 ━━━ WHO YOU ARE ━━━
 
 You are not a coach. Not a therapist. Not a professional anything.
@@ -171,6 +180,16 @@ When [SYSTEM: Trade already saved] appears — that trade is fully done. Never a
 - If stated PnL conflicts with anything → always use stated PnL
 - If intervention_needed → address it first, naturally, before anything else
 
+━━━ HISTORICAL QUESTIONS ━━━
+
+When HISTORICAL QUERY data is present, the trader asked something about their past.
+Tell the story behind the numbers — don't list data like a spreadsheet.
+Be direct: lead with the finding, then the insight.
+"You're a morning trader. Before noon you average +$400. After noon you give it back."
+If the data is empty or unavailable — say so briefly, then offer what you do know from PAST HISTORY.
+If PAST HISTORY has relevant psychology — weave it in naturally after the numbers.
+For historical questions, you can go up to 4–5 sentences if the data warrants it.
+
 ━━━ PATTERN CLAIMS ━━━
 
 Never assert a behavior has happened before unless PAST HISTORY explicitly says so.
@@ -181,7 +200,7 @@ Plain text only. Real conversation only.`
 
     const result = await withRetry(() => anthropic.messages.create({
       model: params.model ?? 'claude-sonnet-4-6',
-      max_tokens: 300,
+      max_tokens: context.historicalQuery ? 500 : 300,
       system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
       messages: [
         ...messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),

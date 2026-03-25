@@ -11,12 +11,13 @@ const BASE_CONTEXT: ContextPacket = {
   weeklyWinRate: 0,
   todayWinRate: 0,
   todayAvgPnL: 0,
-  currentStreak: { type: 'neutral', count: 0 },
-  activeRules: [],
-  accountInfo: null,
-  upcomingEvents: [],
-  hindsightMemories: [],
+  currentStreak: { type: 'win', count: 0 },
+  active_rules: [],
+  account: null,
+  upcomingNews: [],
+  memories: [],
   dataError: false,
+  historicalQuery: null,
 }
 
 describe('Scribe — direct output tests', () => {
@@ -29,6 +30,7 @@ describe('Scribe — direct output tests', () => {
         opened_at: '2026-03-24T14:30:00-04:00', closed_at: '2026-03-24T14:48:00-04:00',
         position_size: null, emotion: 'FOMO', execution_score: null,
         followed_plan: false, confirmed: false, declined: false, has_trade: true,
+        query_type: null, query_subtype: null,
       },
       context: {
         ...BASE_CONTEXT,
@@ -43,16 +45,17 @@ describe('Scribe — direct output tests', () => {
         currentStreak: { type: 'loss', count: 2 },
       },
       recentMessages: [
-        { role: 'user', content: 'ye kinda yk messed around', timestamp: new Date().toISOString() },
-        { role: 'assistant', content: "Hey, real talk — what was going through your head?", timestamp: new Date().toISOString() },
-        { role: 'user', content: 'it was fine since im already green whole week', timestamp: new Date().toISOString() },
-        { role: 'assistant', content: "Yeah you've been running it this week. But that's not the same thing as today being cool to just throw at it.", timestamp: new Date().toISOString() },
-        { role: 'user', content: 'ye i know mb bro, wont repeat', timestamp: new Date().toISOString() },
-        { role: 'assistant', content: "That's all I need to hear.", timestamp: new Date().toISOString() },
-        { role: 'user', content: 'took another loss bro, i tilted', timestamp: new Date().toISOString() },
-        { role: 'assistant', content: "Hey — you said you wouldn't repeat it like two minutes ago. What's going on today man?", timestamp: new Date().toISOString() },
+        { role: 'user', content: 'ye kinda yk messed around' },
+        { role: 'assistant', content: "Hey, real talk — what was going through your head?" },
+        { role: 'user', content: 'it was fine since im already green whole week' },
+        { role: 'assistant', content: "Yeah you've been running it this week. But that's not the same thing as today being cool to just throw at it." },
+        { role: 'user', content: 'ye i know mb bro, wont repeat' },
+        { role: 'assistant', content: "That's all I need to hear." },
+        { role: 'user', content: 'took another loss bro, i tilted' },
+        { role: 'assistant', content: "Hey — you said you wouldn't repeat it like two minutes ago. What's going on today man?" },
       ] as ChatMessage[],
       existingMemories: [],
+      tradingTimezone: 'America/New_York',
     })
 
     console.log('\n=== SCENARIO 1: Discord tilt ===')
@@ -67,6 +70,7 @@ describe('Scribe — direct output tests', () => {
       context: BASE_CONTEXT,
       recentMessages: [],
       existingMemories: [],
+      tradingTimezone: 'America/New_York',
     })
 
     console.log('\n=== SCENARIO 2: small talk (expect nothing) ===')
@@ -82,6 +86,7 @@ describe('Scribe — direct output tests', () => {
         opened_at: '2026-03-24T10:15:00-04:00', closed_at: '2026-03-24T10:34:00-04:00',
         position_size: null, emotion: 'FOMO', execution_score: 3,
         followed_plan: false, confirmed: false, declined: false, has_trade: true,
+        query_type: null, query_subtype: null,
       },
       context: {
         ...BASE_CONTEXT,
@@ -93,6 +98,7 @@ describe('Scribe — direct output tests', () => {
       },
       recentMessages: [] as ChatMessage[],
       existingMemories: [],
+      tradingTimezone: 'America/New_York',
     })
 
     console.log('\n=== SCENARIO 3: breakthrough moment ===')
@@ -108,6 +114,7 @@ describe('Scribe — direct output tests', () => {
         opened_at: '2026-03-24T09:30:00-04:00', closed_at: null,
         position_size: null, emotion: 'FOMO', execution_score: null,
         followed_plan: null, confirmed: false, declined: false, has_trade: true,
+        query_type: null, query_subtype: null,
       },
       context: {
         ...BASE_CONTEXT,
@@ -119,6 +126,7 @@ describe('Scribe — direct output tests', () => {
       },
       recentMessages: [] as ChatMessage[],
       existingMemories: [],
+      tradingTimezone: 'America/New_York',
     })
 
     console.log('\n=== SCENARIO 4: weekly green rationalization ===')

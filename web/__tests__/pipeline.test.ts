@@ -23,6 +23,7 @@ const emptyContext: ContextPacket = {
   memories: [],
   upcomingNews: [],
   dataError: false,
+  historicalQuery: null,
 }
 
 /**
@@ -69,6 +70,7 @@ describe('Pipeline integration (live API)', () => {
       context: emptyContext,
       recentMessages: messages,
       existingMemories: [],
+      tradingTimezone: TZ,
     })
     expect(scribeResult).toBeDefined()
     expect(typeof scribeResult.should_write).toBe('boolean')

@@ -18,6 +18,8 @@ export interface ExtractedData {
   confirmed: boolean
   declined: boolean
   has_trade: boolean
+  query_type: 'historical_analysis' | null
+  query_subtype: 'data' | 'psychology' | 'both' | null
 }
 
 export interface AccountRecord {
@@ -63,6 +65,12 @@ export interface RuleViolationFinding {
   reasoning: string
 }
 
+export interface HistoricalQueryResult {
+  query_description: string
+  results: Record<string, unknown>[]
+  error?: string
+}
+
 export interface ContextPacket {
   todaysTrades: TradeRecord[]
   todaysPnL: number
@@ -78,6 +86,7 @@ export interface ContextPacket {
   upcomingNews: NewsEvent[]
   memories: string[]
   dataError: boolean
+  historicalQuery: HistoricalQueryResult | null
 }
 
 export interface AnalystReport {

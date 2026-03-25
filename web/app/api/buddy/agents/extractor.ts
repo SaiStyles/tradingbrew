@@ -11,6 +11,7 @@ const FAILED: ExtractedData = {
   emotion: null, execution_score: null,
   followed_plan: null,
   confirmed: false, declined: false, has_trade: false,
+  query_type: null, query_subtype: null,
 }
 
 export async function runExtractor(
@@ -27,7 +28,7 @@ export async function runExtractor(
 
     const result = await withRetry(() => anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 400,
+      max_tokens: 500,
       system: `You are a data extractor for a trading journal.
 Extract trading information from the user message.
 Return ONLY valid JSON. No explanation. No conversation. Just the JSON object.
@@ -43,7 +44,7 @@ When extracting times:
 - If AM/PM not stated, infer from context (9:30 = 09:30 AM for US markets).
 
 Return this exact JSON structure:
-{"instrument":null,"direction":null,"pnl":null,"opened_at":null,"closed_at":null,"position_size":null,"emotion":null,"execution_score":null,"followed_plan":null,"confirmed":false,"declined":false,"has_trade":false}
+{"instrument":null,"direction":null,"pnl":null,"opened_at":null,"closed_at":null,"position_size":null,"emotion":null,"execution_score":null,"followed_plan":null,"confirmed":false,"declined":false,"has_trade":false,"query_type":null,"query_subtype":null}
 
 Field rules:
 - instrument: ticker symbol only (NQ, ES, AAPL, etc.)
@@ -54,7 +55,9 @@ Field rules:
 - followed_plan: true when trader says anything like 'i did', 'yes', 'followed it', 'stuck to the plan', 'disciplined', 'as planned'. false when trader says 'deviated', 'went off plan', 'shouldn't have', 'revenge', 'impulsive'. Use judgment. null if not mentioned.
 - confirmed: true if user is agreeing/confirming in any natural way
 - declined: true if user is disagreeing, skipping, or saying no
-- has_trade: true only if the message clearly describes a trade the user has already taken or is actively reporting — requires at minimum an instrument or a pnl or a direction. "I'm thinking about trading NQ" = false. "I took a NQ long" = true. "made $400 today" = true.`,
+- has_trade: true only if the message clearly describes a trade the user has already taken or is actively reporting — requires at minimum an instrument or a pnl or a direction. "I'm thinking about trading NQ" = false. "I took a NQ long" = true. "made $400 today" = true.
+- query_type: "historical_analysis" if the user is asking a question about their past trading history, patterns, or performance (e.g. "how do I do on Mondays", "what's my win rate on NQ", "when did I last tilt", "how was last week"). null for everything else.
+- query_subtype: when query_type is "historical_analysis" — "data" if they want stats/numbers only, "psychology" if they want emotional/behavioral patterns only, "both" if they want both or it's unclear. null when query_type is null.`,
       messages: [
         { role: 'user', content: message },
         { role: 'assistant', content: '{' },

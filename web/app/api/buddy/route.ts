@@ -7,6 +7,8 @@ import { runAnalyst } from './agents/analyst'
 import { runBuddy } from './agents/buddy'
 import { runSaveDetector } from './agents/save-detector'
 import { runScribe } from './agents/scribe'
+import { runQueryAnalyst } from './agents/query-analyst'
+import { runAnalyticsQuery } from '@/lib/supabase/run-analytics'
 import { ensureBank, retainMemory, getTraderPortrait } from '@/lib/memory/hindsight'
 import { getTodayInTz, nowInTz } from './timezone'
 
@@ -120,6 +122,7 @@ export async function POST(request: NextRequest) {
       emotion: null, execution_score: null,
       followed_plan: null, confirmed: false,
       declined: false, has_trade: false,
+      query_type: null, query_subtype: null,
     }
 
     const t0 = Date.now()
@@ -145,6 +148,54 @@ export async function POST(request: NextRequest) {
     if (freshPortrait) session.trader_portrait = freshPortrait
 
     console.log('[agents] extractor + context + portrait:', Date.now() - t0, 'ms', traderPortrait ? '(portrait ready)' : '(no portrait yet)')
+
+    // Step 2.5: Query Agent — runs only for historical analysis questions
+    if (extracted.query_type === 'historical_analysis' && extracted.query_subtype !== 'psychology') {
+      try {
+        const queryResult = await runQueryAnalyst({
+          question: message,
+          querySubtype: extracted.query_subtype,
+          tradingTimezone,
+          currentDate: tradingDate,
+        })
+
+        if (queryResult.needs_sql && queryResult.sql) {
+          const { results, error } = await runAnalyticsQuery(user.id, queryResult.sql)
+
+          // Self-correction: if error, retry once with error context
+          if (error && error !== 'Only SELECT queries allowed') {
+            const retryResult = await runQueryAnalyst({
+              question: `${message}\n\n[Previous SQL failed with: ${error}. Fix and regenerate.]`,
+              querySubtype: extracted.query_subtype,
+              tradingTimezone,
+              currentDate: tradingDate,
+            })
+            if (retryResult.needs_sql && retryResult.sql) {
+              const retryExec = await runAnalyticsQuery(user.id, retryResult.sql)
+              context.historicalQuery = {
+                query_description: retryResult.query_description,
+                results: retryExec.results,
+                error: retryExec.error,
+              }
+            }
+          } else {
+            context.historicalQuery = {
+              query_description: queryResult.query_description,
+              results,
+              error,
+            }
+          }
+        } else {
+          // Psychology-only — no SQL, but mark it so Buddy knows to use memories
+          context.historicalQuery = {
+            query_description: queryResult.query_description,
+            results: [],
+          }
+        }
+      } catch (e) {
+        console.error('[query-agent] failed:', e)
+      }
+    }
 
     // Step 3+4+5: Buddy + Analyst + SaveDetector — all in parallel
     const shouldRunAnalyst = extracted.has_trade || session.messages.length > 0
