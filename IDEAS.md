@@ -32,6 +32,30 @@ On the trade journal, each trading day has an "AI Note" — a short, warm paragr
 - Connects naturally to the psychology_log table idea — same data source, different surface
 - Prop firms and coaches would pay for this alone
 
+## Psychology Architecture — Two Worlds (CRITICAL — do not mix)
+
+**Hindsight = WHO THE TRADER IS (patterns)**
+- Behavioral tendencies built over months. Not per-trade, not dated.
+- Written by Scribe → read by Buddy chat only (recall, reflect)
+- "Tends to revenge trade after 3+ losses on NQ afternoon sessions"
+- Consumer: Buddy chat. Never the journal UI.
+
+**Supabase = WHAT HAPPENED (per-trade notes)**
+- Specific, dated, queryable via SQL
+- Written by Scribe (second write target — not built yet) → read by journal UI
+- "On this trade: revenge mode, jumped in 2 minutes after a loss"
+- Consumer: journal UI only. Never Buddy chat.
+
+**Why they don't conflict:**
+- "What's my psychology on Mondays?" → Hindsight answers. Always.
+- "Show the note on my Tuesday trade" → Supabase answers. Journal reads it.
+
+**Planned tables:**
+- `psychology_log` (id, user_id, trade_id nullable, entry_date, observation) — Scribe writes here
+- `daily_ai_note` (user_id, entry_date, note) — generated on journal page load, one Haiku call
+
+**Build order:** psychology_log + Scribe second write → AI Note generation → Query Agent gains psychology_log in schema (unlocks cross-queries like "days I lost most + psychology on those days")
+
 ## Proactive Buddy (Event-Driven)
 Buddy initiates — doesn't wait for the trader to type first. "Speaks before you ask."
 - Trigger events (priority order): market open → EOD debrief → high-impact news (CPI/NFP/FOMC) → inactivity pattern → X/Twitter alerts
