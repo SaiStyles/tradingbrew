@@ -22,6 +22,16 @@ User asks any historical question in plain English — Buddy answers with real d
 - Requires one-time DB setup: docs/setup-analytics-function.sql
 - Moat: every other journal shows static charts. This is just ask → get answer. Nobody has this.
 
+## AI Note (Daily Mental Game Summary)
+On the trade journal, each trading day has an "AI Note" — a short, warm paragraph describing the trader's mental game that day.
+- Not clinical. Not a report. Written with grace — like a thoughtful friend reflecting on your day.
+- "You came in sharp today. Took your first trade clean, held it well. The second one was where the wheels came off a little — you felt it, you said it yourself. But you didn't chase. That's the version of you worth keeping."
+- Generated from: Scribe observations for that day + trade data (emotion tags, execution scores, followed_plan)
+- Surfaced in the journal day view, below the trade list
+- Architecture: on journal page load for a given date, call a lightweight API that pulls that day's trades + psychology_log entries → Haiku writes the note → cached in psychology_log or a separate daily_notes column
+- Connects naturally to the psychology_log table idea — same data source, different surface
+- Prop firms and coaches would pay for this alone
+
 ## Proactive Buddy (Event-Driven)
 Buddy initiates — doesn't wait for the trader to type first. "Speaks before you ask."
 - Trigger events (priority order): market open → EOD debrief → high-impact news (CPI/NFP/FOMC) → inactivity pattern → X/Twitter alerts
