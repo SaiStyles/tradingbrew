@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import type { TradeRecord } from '@/types/trade'
 import TradeDrawer from './TradeDrawer'
+import DailyNote from './DailyNote'
 
 // ------------------------------------------------------------------
 // Trade Card
@@ -269,6 +270,11 @@ export default function JournalClient({ initialTrades, initialTotal, tradingTime
               Reset
             </button>
           </div>
+        </div>
+
+        {/* AI Note for today */}
+        <div className="mb-6">
+          <DailyNote date={new Date().toLocaleDateString('en-CA', { timeZone: tradingTimezone })} />
         </div>
 
         {/* Error state */}

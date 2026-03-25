@@ -33,6 +33,11 @@ trades (the trader's full history):
 - deleted_at: null for active trades
 - created_at: record creation timestamp
 
+psychology_log (Scribe observations tied to a specific day):
+- entry_date: DATE — the trading day this was observed
+- observation: plain text psychological observation written by Scribe
+- trade_id: UUID — linked trade, may be null
+
 news_events (economic calendar — may be empty for past events):
 - event_name: e.g. 'FOMC Rate Decision', 'CPI', 'NFP'
 - scheduled_at: event timestamp (timestamptz)

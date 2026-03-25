@@ -290,9 +290,18 @@ export async function POST(request: NextRequest) {
         })
         if (!scribeOutput.should_write) return
 
+        // Write to Hindsight (patterns/recall) + psychology_log (dated, queryable)
+        const supabaseScribe = await createClient()
         for (const memory of scribeOutput.memories) {
           await retainMemory(user.id, memory)
           console.log('[scribe] retained to hindsight')
+
+          await supabaseScribe.from('psychology_log').insert({
+            user_id: user.id,
+            trade_id: session.last_trade_id ?? null,
+            entry_date: tradingDate,
+            observation: memory,
+          })
         }
 
       } catch (err) {

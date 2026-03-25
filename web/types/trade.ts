@@ -139,3 +139,20 @@ export interface ScribeOutput {
   should_write: boolean
   memories: string[]
 }
+
+export interface PsychologyLog {
+  id: string
+  user_id: string
+  trade_id: string | null
+  entry_date: string
+  observation: string
+  created_at: string
+}
+
+export interface DailyAiNote {
+  id: string
+  user_id: string
+  entry_date: string
+  note: string
+  generated_at: string
+}
