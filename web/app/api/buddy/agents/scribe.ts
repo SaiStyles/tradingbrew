@@ -15,6 +15,7 @@ interface ScribeParams {
   context: ContextPacket
   recentMessages: ChatMessage[]
   existingMemories: string[]
+  tradingTimezone: string
 }
 
 export async function runScribe(params: ScribeParams): Promise<ScribeOutput> {
@@ -23,7 +24,8 @@ export async function runScribe(params: ScribeParams): Promise<ScribeOutput> {
     if (!apiKey) return { ...EMPTY }
 
     const anthropic = new Anthropic({ apiKey })
-    const { message, buddyReply, extracted, context, recentMessages, existingMemories } = params
+    const { message, buddyReply, extracted, context, recentMessages, existingMemories, tradingTimezone } = params
+    const dayName = new Date().toLocaleDateString('en-US', { weekday: 'long', timeZone: tradingTimezone })
 
     const conversationWindow = recentMessages
       .map(m => `${m.role === 'user' ? 'Trader' : 'Buddy'}: ${m.content}`)
@@ -41,7 +43,9 @@ export async function runScribe(params: ScribeParams): Promise<ScribeOutput> {
         })))
       : 'No trades today.'
 
-    const userContent = `CURRENT MESSAGE: ${message}
+    const userContent = `TODAY IS: ${dayName}
+
+CURRENT MESSAGE: ${message}
 
 BUDDY REPLY: ${buddyReply}
 
@@ -83,6 +87,7 @@ DO NOT WRITE:
 - Temporary emotional states with no pattern behind them
 
 When you write — be precise. Say exactly what you see. One sentence is enough if it's the truth.
+Include the day of week when a pattern may be time-specific (e.g. "On Mondays, ..."). Omit it for clearly general traits.
 
 If a memory has a specific implication for how Buddy should behave — add it at the end in brackets: [Buddy: don't push for reflection right after losses — let them breathe first]
 

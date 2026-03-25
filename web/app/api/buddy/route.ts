@@ -235,6 +235,7 @@ export async function POST(request: NextRequest) {
           context,
           recentMessages: session.messages.slice(-8),
           existingMemories: context.memories,
+          tradingTimezone,
         })
         if (!scribeOutput.should_write) return
 
