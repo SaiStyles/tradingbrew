@@ -53,6 +53,7 @@ RULES FOR SQL GENERATION:
 - Hour of day: EXTRACT(HOUR FROM opened_at AT TIME ZONE 'UTC')
 - For win rate: COUNT(*) FILTER (WHERE pnl > 0) * 100.0 / NULLIF(COUNT(*), 0)
 - If FOMC/news events are requested, JOIN with news_events on DATE(opened_at) = DATE(scheduled_at)
+- For psychology/emotional state questions about a specific day, SELECT from psychology_log WHERE entry_date = '<date>'
 - Always alias columns with clear names (e.g. total_pnl, win_rate, trade_count)
 `
 

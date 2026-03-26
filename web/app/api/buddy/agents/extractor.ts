@@ -57,7 +57,7 @@ Field rules:
 - declined: true if user is disagreeing, skipping, or saying no
 - has_trade: true only if the message clearly describes a trade the user has already taken or is actively reporting — requires at minimum an instrument or a pnl or a direction. "I'm thinking about trading NQ" = false. "I took a NQ long" = true. "made $400 today" = true.
 - query_type: "historical_analysis" if the user is asking a question about their past trading history, patterns, or performance (e.g. "how do I do on Mondays", "what's my win rate on NQ", "when did I last tilt", "how was last week"). null for everything else.
-- query_subtype: when query_type is "historical_analysis" — "data" if they explicitly want stats/numbers only, "psychology" if they explicitly want emotional/behavioral patterns only, "both" for everything else including any uncertainty. null when query_type is null. When in doubt: "both".`,
+- query_subtype: when query_type is "historical_analysis" — "data" if they explicitly want stats/numbers only, "psychology" ONLY for open-ended pattern questions with no date reference (e.g. "what's my biggest weakness", "am I a revenge trader"). If the question references a specific date/day/period AND psychology, use "both" — those need SQL too. null when query_type is null. When in doubt: "both".`,
       messages: [
         { role: 'user', content: message },
         { role: 'assistant', content: '{' },

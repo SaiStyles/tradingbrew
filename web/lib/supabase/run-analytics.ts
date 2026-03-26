@@ -24,14 +24,17 @@ export async function runAnalyticsQuery(
   userId: string,
   rawSql: string
 ): Promise<{ results: Record<string, unknown>[]; error?: string }> {
+  // Strip trailing semicolon — breaks Supabase RPC wrapping
+  const rawSqlClean = rawSql.trim().replace(/;+$/, '')
+
   // Hard validate SELECT-only before sending to DB
-  const trimmed = rawSql.trim().toLowerCase()
+  const trimmed = rawSqlClean.toLowerCase()
   if (!trimmed.startsWith('select')) {
     return { results: [], error: 'Only SELECT queries allowed' }
   }
 
   // Inject user_id scope — find the first WHERE clause or add one
-  let sql = injectUserIdFilter(rawSql, userId)
+  let sql = injectUserIdFilter(rawSqlClean, userId)
 
   // Ensure LIMIT exists for non-aggregate queries
   if (!trimmed.includes('limit')) {
