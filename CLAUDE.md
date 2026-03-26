@@ -244,6 +244,12 @@ SCRIBE (Haiku)
      Buddy storytelling, Supabase RPC executor (requires setup-analytics-function.sql)
 - ✅ Scribe time-anchoring — day of week in every observation,
      enables "what's my psychology on Mondays?" recall
+- ✅ Psychology data layer — psychology_log (Scribe writes per message, deduped),
+     daily_ai_notes (Haiku, cached, smart staleness check via trade/obs timestamps)
+- ✅ Daily AI Note — generated from trades + psychology_log, regenerates when new
+     data arrives, cached forever for past days, null when no trading activity
+- ✅ Scribe dedup — today's psychology_log injected into existingMemories,
+     max 1 memory per run, semantic duplicate detection
 - ⬜ Performance dashboard
 - ⬜ Proactive Buddy (event-driven, SSE push)
 - ⬜ News alerts

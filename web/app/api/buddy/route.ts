@@ -279,19 +279,29 @@ export async function POST(request: NextRequest) {
     // Step 7: Scribe — runs after response is sent, guaranteed by next/server after()
     after(async () => {
       try {
+        const supabaseScribe = await createClient()
+
+        // Fetch today's psychology_log so Scribe sees what it already wrote today
+        const { data: todayLogs } = await supabaseScribe
+          .from('psychology_log')
+          .select('observation')
+          .eq('user_id', user.id)
+          .eq('entry_date', tradingDate)
+          .order('created_at', { ascending: true })
+        const todayObservations = (todayLogs ?? []).map(r => r.observation as string)
+
         const scribeOutput = await runScribe({
           message,
           buddyReply,
           extracted,
           context,
           recentMessages: session.messages.slice(-8),
-          existingMemories: context.memories,
+          existingMemories: [...context.memories, ...todayObservations],
           tradingTimezone,
         })
         if (!scribeOutput.should_write) return
 
         // Write to Hindsight (patterns/recall) + psychology_log (dated, queryable)
-        const supabaseScribe = await createClient()
         for (const memory of scribeOutput.memories) {
           await retainMemory(user.id, memory)
           console.log('[scribe] retained to hindsight')

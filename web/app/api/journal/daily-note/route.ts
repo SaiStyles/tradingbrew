@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     const date = request.nextUrl.searchParams.get('date')
     if (!date) return NextResponse.json({ error: 'date required (YYYY-MM-DD)' }, { status: 400 })
 
-    // Return cached note if exists
+    // Check cache
     const { data: cached } = await supabase
       .from('daily_ai_notes')
       .select('note, generated_at')
@@ -21,7 +21,34 @@ export async function GET(request: NextRequest) {
       .eq('entry_date', date)
       .maybeSingle()
 
-    if (cached) return NextResponse.json({ note: cached.note, cached: true })
+    if (cached) {
+      // Check if any trade or psychology observation was created after the note was generated
+      const [{ data: newerTrade }, { data: newerObs }] = await Promise.all([
+        supabase
+          .from('trades')
+          .select('created_at')
+          .eq('user_id', user.id)
+          .is('deleted_at', null)
+          .gte('created_at', `${date}T00:00:00`)
+          .lt('created_at', `${date}T23:59:59`)
+          .gt('created_at', cached.generated_at)
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from('psychology_log')
+          .select('created_at')
+          .eq('user_id', user.id)
+          .eq('entry_date', date)
+          .gt('created_at', cached.generated_at)
+          .limit(1)
+          .maybeSingle(),
+      ])
+
+      // Cache is fresh — nothing new since the note was generated
+      if (!newerTrade && !newerObs) {
+        return NextResponse.json({ note: cached.note, cached: true })
+      }
+    }
 
     // Fetch trades for that day
     const { data: trades } = await supabase

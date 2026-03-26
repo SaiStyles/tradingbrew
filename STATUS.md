@@ -1,5 +1,5 @@
 # TradingBrew — Current Status
-> Last updated: 2026-03-24 (Session 6)
+> Last updated: 2026-03-26 (Session 9)
 
 ## What This Is
 AI trading companion (Jarvis for traders). Web app built on Next.js 15 + Supabase + Anthropic API.
@@ -65,7 +65,17 @@ AI trading companion (Jarvis for traders). Web app built on Next.js 15 + Supabas
 - **Route integration tests added (Session 6 late)**:
   - `web/__tests__/route-integration.test.ts` — 6 tests, full pipeline with mocked Supabase + real Claude API
   - Tests: 401 auth, 400 bad body, small talk, full trade save, incomplete trade, session context
-- Test suite: 67 tests (46 original + 15 chat scenarios + 6 route integration — all pass)
+- Test suite: 71 tests — all pass
+- **Psychology data layer (Sessions 8–9)**:
+  - `psychology_log` table — Scribe writes here after every Buddy response (deduped)
+  - Scribe dedup: today's logs injected into existingMemories, max 1 per run, semantic duplicate check
+  - `daily_ai_notes` table — Haiku-generated warm daily reflection
+  - Smart cache: regenerates only when new trade or observation arrives after last generation
+  - Daily AI note API: `/api/journal/daily-note?date=YYYY-MM-DD`
+- **Conversational Analytics (Session 8)**:
+  - Query Agent (Haiku) — text-to-SQL, chain-of-thought, self-correction
+  - psychology-only questions skip SQL, go straight to Hindsight
+  - Buddy gets historicalQuery results, tells the story
 
 ### DB — Clean as of Session 5
 - Dead psychological profile columns dropped from users table
@@ -80,12 +90,12 @@ AI trading companion (Jarvis for traders). Web app built on Next.js 15 + Supabas
 
 ### Pending / Not Built
 - Performance dashboard (V1: charts + filters — PnL by day, instrument win rate, hour of day, emotion vs PnL)
-- Voice note replay in dashboard — show AI reply + trader message as audio (V2)
-- ~~Chart screenshots~~ — abandoned (CME futures data unavailable from Polygon/yahoo-finance2)
-- News alerts + event-driven Buddy triggers
+- **News alerts + Proactive Buddy** ← next up
 - X/Twitter watchlist (user-defined accounts)
 - ElevenLabs voice (V2)
 - Tauri desktop app (V2, post-launch)
+- ~~Chart screenshots~~ — abandoned (CME futures data unavailable)
+- Voice note replay in dashboard (V2)
 
 ---
 
