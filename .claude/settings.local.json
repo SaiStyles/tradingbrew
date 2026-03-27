@@ -26,7 +26,9 @@
       "Bash(grep -E \"\\\\.md$|STATUS|TODO|NOTES\")",
       "Bash(grep -r \"TODO\\\\|FIXME\\\\|BUG\\\\|XXX\\\\|HACK\" /c/Users/saist/tradingbrew/web --include=*.ts --include=*.tsx)",
       "WebFetch(domain:hindsight.vectorize.io)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(xargs ls:*)",
+      "Bash(grep -r \"TODO\\\\|FIXME\\\\|XXX\\\\|HACK\\\\|BUG\\\\|INCOMPLETE\" /c/Users/saist/tradingbrew/web --include=*.ts --include=*.tsx)"
     ]
   }
 }
