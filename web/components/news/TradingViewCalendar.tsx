@@ -13,26 +13,20 @@ const COUNTRIES = [
   { label: 'AUD', value: 'au' },
 ]
 
-const IMPACTS = [
-  { label: 'High', value: '1' },
-  { label: 'Med+', value: '0,1' },
-  { label: 'All', value: '-1,0,1' },
-]
-
 function loadPrefs() {
   try {
     const s = localStorage.getItem(STORAGE_KEY)
-    return s ? JSON.parse(s) : { country: '', importance: '1' }
+    return s ? JSON.parse(s) : { country: '' }
   } catch {
-    return { country: '', importance: '1' }
+    return { country: '' }
   }
 }
 
-function savePrefs(prefs: { country: string; importance: string }) {
+function savePrefs(prefs: { country: string }) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs))
 }
 
-function Widget({ country, importance }: { country: string; importance: string }) {
+function Widget({ country }: { country: string }) {
   const container = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -48,12 +42,12 @@ function Widget({ country, importance }: { country: string; importance: string }
       width: '100%',
       height: '100%',
       locale: 'en',
-      importanceFilter: importance,
+      importanceFilter: '1',
       ...(country ? { countryFilter: country } : {}),
     })
 
     container.current.appendChild(script)
-  }, [country, importance])
+  }, [country])
 
   return (
     <div className="tradingview-widget-container h-full" ref={container}>
@@ -63,7 +57,7 @@ function Widget({ country, importance }: { country: string; importance: string }
 }
 
 export default function TradingViewCalendar() {
-  const [prefs, setPrefs] = useState({ country: '', importance: '1' })
+  const [prefs, setPrefs] = useState({ country: '' })
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
@@ -72,56 +66,30 @@ export default function TradingViewCalendar() {
   }, [])
 
   function setCountry(value: string) {
-    const next = { ...prefs, country: prefs.country === value ? '' : value }
-    setPrefs(next)
-    savePrefs(next)
-  }
-
-  function setImportance(value: string) {
-    const next = { ...prefs, importance: value }
+    const next = { country: prefs.country === value ? '' : value }
     setPrefs(next)
     savePrefs(next)
   }
 
   return (
     <div className="flex flex-col h-full gap-3">
-      {/* Our filter controls */}
-      <div className="flex items-center gap-4">
-        <div className="flex gap-1">
-          {COUNTRIES.map(c => (
-            <button
-              key={c.value}
-              onClick={() => setCountry(c.value)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
-                prefs.country === c.value
-                  ? 'bg-violet-600 text-white'
-                  : 'bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800'
-              }`}
-            >
-              {c.label}
-            </button>
-          ))}
-        </div>
-        <div className="flex gap-1 ml-auto">
-          {IMPACTS.map(i => (
-            <button
-              key={i.value}
-              onClick={() => setImportance(i.value)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
-                prefs.importance === i.value
-                  ? 'bg-zinc-700 text-white'
-                  : 'bg-zinc-900 text-zinc-500 hover:text-white hover:bg-zinc-800'
-              }`}
-            >
-              {i.label}
-            </button>
-          ))}
-        </div>
+      <div className="flex gap-1">
+        {COUNTRIES.map(c => (
+          <button
+            key={c.value}
+            onClick={() => setCountry(c.value)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+              prefs.country === c.value
+                ? 'bg-violet-600 text-white'
+                : 'bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800'
+            }`}
+          >
+            {c.label}
+          </button>
+        ))}
       </div>
-
-      {/* Widget — remounts when filters change */}
       <div className="flex-1 min-h-0">
-        {mounted && <Widget country={prefs.country} importance={prefs.importance} />}
+        {mounted && <Widget country={prefs.country} />}
       </div>
     </div>
   )
