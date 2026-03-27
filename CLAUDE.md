@@ -256,6 +256,8 @@ SCRIBE (Haiku)
      by instrument/day of week/hour of day, rolling profit factor (edge decay),
      psychology section (emotion vs PnL, plan adherence, execution score),
      13-week calendar heatmap. Filter: 7D | MTD | 30D | 3M | All. Default 30D.
+- ✅ Economic Calendar (/news) — TradingView embed widget, country filter buttons
+     (USA/EUR/GBP/JPY/CAD/AUD), localStorage persistence, high-impact only
 - ⬜ Streak card on /dashboard hardcoded "0 days" — fix later
 - ⬜ OpenAI TTS — replace Web Speech Synthesis (plan in IDEAS.md)
 - ⬜ News alerts

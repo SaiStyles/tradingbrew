@@ -1,5 +1,5 @@
 # TradingBrew — Current Status
-> Last updated: 2026-03-27 (Session 10)
+> Last updated: 2026-03-27 (Session 11)
 
 ## What This Is
 AI trading companion (Jarvis for traders). Web app built on Next.js 15 + Supabase + Anthropic API.
@@ -88,6 +88,13 @@ AI trading companion (Jarvis for traders). Web app built on Next.js 15 + Supabas
   - Filter: 7D | MTD | 30D | 3M | All (default 30D)
   - recharts 3.8.1 added to dependencies
   - All data derived from Supabase, all aggregations computed client-side in useMemo
+- **Economic Calendar page (Session 11)**:
+  - `/news` route — TradingView embed widget (free, no API key)
+  - Country filter buttons: USA | EUR | GBP | JPY | CAD | AUD (toggle)
+  - Filter preference persisted via localStorage (survives reload)
+  - importanceFilter hardcoded to high-only ('1') in widget config
+  - Widget remounts on country change to apply new config
+  - All free economic calendar APIs confirmed dead/paywalled (Finnhub 403, FMP August 2025, ForexFactory Cloudflare blocked)
 
 ### DB — Clean as of Session 5
 - Dead psychological profile columns dropped from users table
@@ -115,7 +122,7 @@ AI trading companion (Jarvis for traders). Web app built on Next.js 15 + Supabas
 
 ### Pending / Not Built
 - **Streak card on /dashboard hardcoded to "0 days"** — never implemented, fix later (real computation exists in StatsClient for reference)
-- News seeder (Finnhub → news_events table) — plumbing already done, just needs data
+- ~~News seeder (Finnhub → news_events table)~~ — replaced by TradingView embed widget
 - X/Twitter watchlist (user-defined accounts)
 - ElevenLabs voice (V2)
 - Tauri desktop app (V2, post-launch)
