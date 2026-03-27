@@ -34,18 +34,17 @@ Think Tony Stark and Jarvis — the buddy no trader has ever had.
 - Agent Parser: shared lib/claude/parser.ts
 - Memory: Hindsight (gen2 agentic memory) — semantic recall, Mental Models, reflect()
 - Database Facts: Supabase PostgreSQL (trades, rules, accounts)
-- Voice V1: Web Speech API (free) + Web Speech Synthesis (free)
-- Voice V2: Whisper (input) + ElevenLabs (output) — after launch
+- Voice: Web Speech API (free) + Web Speech Synthesis (free) → Whisper (input) + ElevenLabs (output) later
 - Deployment: Vercel
-- Desktop: Tauri (5MB, lighter than Electron) — V2
+- Desktop: Tauri (5MB, lighter than Electron) — post-launch
 
-## Buddy Personality System — KEY V1 FEATURE
+## Buddy Personality System — KEY FEATURE
 - User can choose ANY personality — viral hook
 - Default options: Friendly Mentor, Drill Sergeant, Zen Master, Gordon Gekko
 - Custom: user types anything — "Jack Sparrow", "Gordon Gekko", "Batman" — Claude adapts fully
 - Stored in users.buddy_personality
-- V1: personality in text only — already works today
-- V2: matching ElevenLabs voice — character voices from ElevenLabs community library
+- Personality in text only — already works today
+- Later: matching ElevenLabs voice — character voices from ElevenLabs community library
 - NEVER real celebrity voice cloning — legal risk. "Jack Sparrow voice" = stylistic approximation, not Johnny Depp
 - Buddy name customizable → users.buddy_name
 - Viral hook: combo of character voice + character text = screenshot moments ("greed is good, but that stop loss wasn't")
@@ -58,8 +57,8 @@ Think Tony Stark and Jarvis — the buddy no trader has ever had.
 - Web Speech reads every response aloud automatically
 
 ## Pricing
-- V1 Launch: FREE — build users first
-- V2: Free (30 trades) | Pro $19/month (unlimited + all features)
+- Launch: FREE — build users first
+- Later: Free (30 trades) | Pro $19/month (unlimited + all features)
 
 ## Acquisition Target
 - Buyers: Tradovate, Apex, TopStep, TradingView
