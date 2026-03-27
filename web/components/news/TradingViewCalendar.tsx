@@ -17,7 +17,7 @@ export default function TradingViewCalendar() {
       width: '100%',
       height: '100%',
       locale: 'en',
-      importanceFilter: '-1,0,1',
+      importanceFilter: '1',
       countryFilter: 'us,eu,gb,jp,ca,au,nz,ch,cn',
     })
 
