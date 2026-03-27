@@ -8,6 +8,11 @@ type Message = {
   timestamp: Date
 }
 
+type SilentLogEntry = {
+  action: string | null
+  trade_data: { instrument?: string; pnl?: number } | null
+}
+
 export default function BuddyChat({ buddyName }: { buddyName: string }) {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -20,50 +25,119 @@ export default function BuddyChat({ buddyName }: { buddyName: string }) {
   const [loading, setLoading] = useState(false)
   const [isListening, setIsListening] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
-  const [interimText, setInterimText] = useState('')   // shows live transcript as you speak
-  const [soundDetected, setSoundDetected] = useState(false) // lights up when mic hears audio
+  const [interimText, setInterimText] = useState('')
+  const [soundDetected, setSoundDetected] = useState(false)
+  const [silentMode, setSilentMode] = useState(false)
+  const [silentCount, setSilentCount] = useState(0)
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const recognitionRef = useRef<any>(null)
   const isListeningRef = useRef(false)
   const isSpeakingRef = useRef(false)
+  const silentModeRef = useRef(false)
+  const silentLogRef = useRef<SilentLogEntry[]>([])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // Chrome bug: speechSynthesis pauses itself after page inactivity — force resume periodically
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (typeof window !== 'undefined' && window.speechSynthesis?.paused) {
+        window.speechSynthesis.resume()
+      }
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [])
+
   const speak = (text: string) => {
     if (!('speechSynthesis' in window)) return
+
+    // Chrome bug: cancel() + immediate speak() silently fails — small delay required
     window.speechSynthesis.cancel()
-    const utterance = new SpeechSynthesisUtterance(text)
-    utterance.rate = 1.0
-    utterance.pitch = 1.0
-    utterance.volume = 1.0
-    utterance.onstart = () => {
-      isSpeakingRef.current = true
-      setIsSpeaking(true)
-    }
-    utterance.onend = () => {
-      isSpeakingRef.current = false
-      setIsSpeaking(false)
-      // Chrome kills mic while speaking — restart after synthesis ends
-      if (isListeningRef.current && recognitionRef.current) {
-        setTimeout(() => {
+
+    setTimeout(() => {
+      const utterance = new SpeechSynthesisUtterance(text)
+      utterance.rate = 1.0
+      utterance.pitch = 1.0
+      utterance.volume = 1.0
+
+      // Safety timeout: if onend never fires (Chrome stuck state), force reset after 30s
+      const safetyTimer = setTimeout(() => {
+        if (isSpeakingRef.current) {
+          console.warn('[voice] speechSynthesis onend never fired — forcing reset')
+          isSpeakingRef.current = false
+          setIsSpeaking(false)
           if (isListeningRef.current) {
-            try { recognitionRef.current.start() } catch {}
+            startRecognition()
           }
-        }, 300)
+        }
+      }, 30000)
+
+      utterance.onstart = () => {
+        isSpeakingRef.current = true
+        setIsSpeaking(true)
       }
-    }
-    window.speechSynthesis.speak(utterance)
+      utterance.onend = () => {
+        clearTimeout(safetyTimer)
+        isSpeakingRef.current = false
+        setIsSpeaking(false)
+        if (isListeningRef.current) {
+          setTimeout(() => {
+            if (isListeningRef.current) {
+              startRecognition()
+            }
+          }, 300)
+        }
+      }
+      utterance.onerror = () => {
+        clearTimeout(safetyTimer)
+        isSpeakingRef.current = false
+        setIsSpeaking(false)
+      }
+
+      window.speechSynthesis.speak(utterance)
+    }, 100)
+  }
+
+  const surfaceSilentSummary = () => {
+    const log = silentLogRef.current
+    silentLogRef.current = []
+    setSilentCount(0)
+    if (log.length === 0) return
+
+    const saved = log.filter(e => e.action === 'save_trade').length
+    const flagged = log.filter(e => e.action !== null && e.action !== 'save_trade').length
+
+    let summary = `Back. Logged ${saved} trade${saved !== 1 ? 's' : ''} across ${log.length} message${log.length !== 1 ? 's' : ''}`
+    if (flagged > 0) summary += `, ${flagged} flagged`
+    else summary += ', nothing flagged'
+    summary += '.'
+
+    setMessages(prev => [...prev, { role: 'buddy', content: summary, timestamp: new Date() }])
+    speak(summary)
+  }
+
+  const toggleSilentMode = () => {
+    if (!isListeningRef.current) return // silent mode only makes sense when mic is on
+    const next = !silentModeRef.current
+    silentModeRef.current = next
+    setSilentMode(next)
+    if (!next) surfaceSilentSummary()
   }
 
   const sendMessage = async (text: string) => {
     if (!text.trim()) return
-    setLoading(true)
+    const isSilent = silentModeRef.current
+
+    if (!isSilent) setLoading(true)
     setInterimText('')
 
-    const userMessage: Message = { role: 'user', content: text, timestamp: new Date() }
-    setMessages(prev => [...prev, userMessage])
+    if (!isSilent) {
+      const userMessage: Message = { role: 'user', content: text, timestamp: new Date() }
+      setMessages(prev => [...prev, userMessage])
+    }
     setInput('')
 
     try {
@@ -73,13 +147,19 @@ export default function BuddyChat({ buddyName }: { buddyName: string }) {
         body: JSON.stringify({ message: text })
       })
       const data = await res.json()
-      const buddyMessage: Message = { role: 'buddy', content: data.reply, timestamp: new Date() }
-      setMessages(prev => [...prev, buddyMessage])
-      speak(data.reply)
+
+      if (isSilent) {
+        silentLogRef.current.push({ action: data.action ?? null, trade_data: data.trade_data ?? null })
+        setSilentCount(silentLogRef.current.length)
+      } else {
+        const buddyMessage: Message = { role: 'buddy', content: data.reply, timestamp: new Date() }
+        setMessages(prev => [...prev, buddyMessage])
+        speak(data.reply)
+      }
     } catch (error) {
       console.error('Error:', error)
     } finally {
-      setLoading(false)
+      if (!isSilent) setLoading(false)
     }
   }
 
@@ -87,7 +167,7 @@ export default function BuddyChat({ buddyName }: { buddyName: string }) {
     const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition
     const recognition = new SpeechRecognition()
     recognition.continuous = true
-    recognition.interimResults = true   // show partial transcripts while speaking
+    recognition.interimResults = true
     recognition.lang = 'en-US'
 
     recognition.onsoundstart = () => { console.log('[voice] sound start'); setSoundDetected(true) }
@@ -105,7 +185,7 @@ export default function BuddyChat({ buddyName }: { buddyName: string }) {
         if (event.results[i].isFinal) final += t
         else interim += t
       }
-      if (interim) setInterimText(interim)
+      if (interim && !silentModeRef.current) setInterimText(interim)
       if (final) {
         setInterimText('')
         sendMessage(final.trim())
@@ -128,9 +208,10 @@ export default function BuddyChat({ buddyName }: { buddyName: string }) {
     recognition.onend = () => {
       setSoundDetected(false)
       if (isListeningRef.current && !isSpeakingRef.current) {
+        // Fresh instance on restart — reusing the same instance is unreliable in Chrome
         setTimeout(() => {
           if (isListeningRef.current && !isSpeakingRef.current) {
-            try { recognition.start() } catch {}
+            startRecognition()
           }
         }, 100)
       }
@@ -140,13 +221,19 @@ export default function BuddyChat({ buddyName }: { buddyName: string }) {
     recognition.start()
   }
 
-  const toggleListening = async () => {
+  const toggleListening = () => {
     if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
       alert('Voice not supported in this browser. Use Chrome.')
       return
     }
 
     if (isListeningRef.current) {
+      // If silent mode is on, surface summary before stopping
+      if (silentModeRef.current) {
+        silentModeRef.current = false
+        setSilentMode(false)
+        surfaceSilentSummary()
+      }
       isListeningRef.current = false
       setIsListening(false)
       setInterimText('')
@@ -156,15 +243,9 @@ export default function BuddyChat({ buddyName }: { buddyName: string }) {
       return
     }
 
-    // Request mic permission then immediately release — SpeechRecognition needs the mic free
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      stream.getTracks().forEach(track => track.stop())
-    } catch {
-      alert('Microphone permission denied. Allow mic access in your browser settings.')
-      return
-    }
-
+    // Start directly — SpeechRecognition handles its own permission via onerror 'not-allowed'
+    // Do NOT await getUserMedia first: the async gap breaks Chrome's user gesture chain
+    // and startRecognition() silently fails
     isListeningRef.current = true
     setIsListening(true)
     startRecognition()
@@ -177,24 +258,40 @@ export default function BuddyChat({ buddyName }: { buddyName: string }) {
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
         <div className="flex items-center gap-2">
           <div className={`w-2 h-2 rounded-full transition-colors ${
+            silentMode ? 'bg-violet-500 animate-pulse' :
             soundDetected ? 'bg-yellow-400 animate-pulse' :
             isListening ? 'bg-green-400 animate-pulse' :
             'bg-zinc-600'
           }`} />
           <span className="text-white text-sm font-medium">{buddyName}</span>
           {isSpeaking && <span className="text-zinc-500 text-xs">speaking...</span>}
-          {soundDetected && <span className="text-yellow-400 text-xs">hearing you...</span>}
+          {soundDetected && !silentMode && <span className="text-yellow-400 text-xs">hearing you...</span>}
+          {silentMode && <span className="text-violet-400 text-xs">silent — still listening</span>}
         </div>
-        <button
-          onClick={toggleListening}
-          className={`text-xs px-3 py-1 rounded-full transition ${
-            isListening
-              ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-              : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
-          }`}
-        >
-          {isListening ? '🎤 Listening' : '🎤 Voice Off'}
-        </button>
+        <div className="flex items-center gap-2">
+          {isListening && (
+            <button
+              onClick={toggleSilentMode}
+              className={`text-xs px-3 py-1 rounded-full transition ${
+                silentMode
+                  ? 'bg-violet-500/20 text-violet-400 border border-violet-500/30'
+                  : 'bg-zinc-800 text-zinc-400 border border-zinc-700 hover:text-white'
+              }`}
+            >
+              {silentMode ? `Silent (${silentCount})` : 'Silent'}
+            </button>
+          )}
+          <button
+            onClick={toggleListening}
+            className={`text-xs px-3 py-1 rounded-full transition ${
+              isListening
+                ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
+            }`}
+          >
+            {isListening ? '🎤 Listening' : '🎤 Voice Off'}
+          </button>
+        </div>
       </div>
 
       {/* Messages */}
@@ -210,8 +307,7 @@ export default function BuddyChat({ buddyName }: { buddyName: string }) {
             </div>
           </div>
         ))}
-        {/* Live interim transcript bubble */}
-        {interimText && (
+        {interimText && !silentMode && (
           <div className="flex justify-end">
             <div className="max-w-[80%] rounded-2xl px-4 py-2 text-sm bg-blue-600/40 text-blue-200 rounded-br-sm italic">
               {interimText}
@@ -240,7 +336,7 @@ export default function BuddyChat({ buddyName }: { buddyName: string }) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && sendMessage(input)}
-            placeholder={isListening ? 'Speak or type...' : 'Type or use voice...'}
+            placeholder={silentMode ? 'Silent mode — speaking but not shown' : isListening ? 'Speak or type...' : 'Type or use voice...'}
             className="flex-1 bg-zinc-800 border border-zinc-700 text-white rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500 transition"
           />
           <button

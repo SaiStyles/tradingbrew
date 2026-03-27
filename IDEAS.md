@@ -1,16 +1,6 @@
 # Ideas & Notes
 > Dump ideas here so they don't get lost. No structure needed.
 
-## Confession Mode
-After a trade saves, Buddy asks: "Want to record how you felt in that moment?"
-User hits a button, speaks freely — raw emotion, no structure needed.
-- Voice saved as audio blob → Supabase Storage
-- Optional transcription (Whisper)
-- Buddy can reference the emotional pattern later without quoting it directly
-- Prop firms love this for trader psychology insights
-- Tech: MediaRecorder API (browser native, free)
-- Playback in trade drawer alongside the trade details
- 
 ## ✅ Conversational Analytics (Text-to-SQL) — BUILT (Session 8)
 User asks any historical question in plain English — Buddy answers with real data + Hindsight psychology.
 - "How do I usually do at FOMC events?" / "What did I do on Oct 7th last year?" / "How do I trade Mondays?"

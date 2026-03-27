@@ -130,7 +130,7 @@ CONTEXT (Pure TypeScript — no AI call)
   → Today's trades summary + P&L
   → Active rules
   → Account info
-  → Upcoming economic events (next 2 hours)
+  → Upcoming economic events (next 2 hours) — NOTE: news tab is standalone TradingView embed, not connected to Buddy. This context data comes from news_events table only.
   → historicalQuery: null (populated by QueryAnalyst step)
 - Runs in parallel with Extractor + portrait fetch
 
@@ -259,7 +259,7 @@ SCRIBE (Haiku)
      (USA/EUR/GBP/JPY/CAD/AUD), localStorage persistence, high-impact only
 - ⬜ Streak card on /dashboard hardcoded "0 days" — fix later
 - ⬜ OpenAI TTS — replace Web Speech Synthesis (plan in IDEAS.md)
-- ⬜ News alerts
+- ⬜ News alerts — DROPPED. News tab is standalone TradingView embed, kept separate from Buddy.
 - ⬜ Confession Mode (voice recording post-trade)
 - ⬜ Tauri desktop app
 

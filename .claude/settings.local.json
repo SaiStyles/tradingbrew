@@ -30,7 +30,11 @@
       "Bash(xargs ls:*)",
       "Bash(grep -r \"TODO\\\\|FIXME\\\\|XXX\\\\|HACK\\\\|BUG\\\\|INCOMPLETE\" /c/Users/saist/tradingbrew/web --include=*.ts --include=*.tsx)",
       "Bash(curl:*)",
-      "WebFetch(domain:site.financialmodelingprep.com)"
+      "WebFetch(domain:site.financialmodelingprep.com)",
+      "Bash(ls C:Userssaisttradingbrew/*.md)",
+      "Bash(find /c/Users/saist/tradingbrew -maxdepth 2 -name *.md -not -path */node_modules/* -not -path */.claude/*)",
+      "WebFetch(domain:deepgram.com)",
+      "WebFetch(domain:developers.deepgram.com)"
     ]
   }
 }
