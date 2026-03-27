@@ -18,7 +18,7 @@ Think Tony Stark and Jarvis — the buddy no trader has ever had.
 - PWA as stepping stone before Tauri
 
 ## Tech Stack
-- Frontend: Next.js 15, TypeScript, TailwindCSS, Framer Motion
+- Frontend: Next.js 15, TypeScript, TailwindCSS, Framer Motion, Recharts 3.8.1
 - Backend: Next.js API routes, Node.js
 - Database: Supabase (PostgreSQL)
 - Auth: Supabase Auth
@@ -250,8 +250,14 @@ SCRIBE (Haiku)
      data arrives, cached forever for past days, null when no trading activity
 - ✅ Scribe dedup — today's psychology_log injected into existingMemories,
      max 1 memory per run, semantic duplicate detection
-- ⬜ Performance dashboard
-- ⬜ Proactive Buddy (event-driven, SSE push)
+- ✅ Performance Stats page (/stats) — 12 KPI cards (PnL, Win Rate, Profit Factor,
+     Expectancy, Sharpe, Max Drawdown, Recovery Factor, Consistency Score, Streak),
+     equity curve + drawdown overlay, daily PnL bars, trade distribution histogram,
+     by instrument/day of week/hour of day, rolling profit factor (edge decay),
+     psychology section (emotion vs PnL, plan adherence, execution score),
+     13-week calendar heatmap. Filter: 7D | MTD | 30D | 3M | All. Default 30D.
+- ⬜ Streak card on /dashboard hardcoded "0 days" — fix later
+- ⬜ OpenAI TTS — replace Web Speech Synthesis (plan in IDEAS.md)
 - ⬜ News alerts
 - ⬜ Confession Mode (voice recording post-trade)
 - ⬜ Tauri desktop app

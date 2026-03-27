@@ -56,6 +56,20 @@ On the trade journal, each trading day has an "AI Note" — a short, warm paragr
 
 **Build order:** psychology_log + Scribe second write → AI Note generation → Query Agent gains psychology_log in schema (unlocks cross-queries like "days I lost most + psychology on those days")
 
+## Streak Card Fix (Dashboard)
+The "Streak" card on `/dashboard` is hardcoded to "0 days". The real streak computation already exists in `StatsClient.tsx` — copy the logic there. Needs all-time trades query (not just today's trades which the dashboard currently fetches). Low effort, fix whenever.
+
+## OpenAI TTS — Replace Web Speech Synthesis
+Replace `window.speechSynthesis` with OpenAI TTS for a human-sounding Buddy voice.
+- Web Speech is robotic and inconsistent across browsers — not acceptable for a product
+- OpenAI tts-1, `onyx` or `nova` voice — natural, warm, consistent
+- Cost: $15/1M chars. At 1000 DAU (~3.6M chars/mo) = ~$54/mo. Beta is basically free.
+- No character voices — just one good human voice for now
+- V2: migrate to ElevenLabs Flash when personality voices become a feature (500+ DAU)
+- Architecture: new `/api/tts` route streams audio from OpenAI → browser plays via Web Audio API
+- BuddyChat.tsx: replace `speak()` function only, mic/STT stays Web Speech (free, unchanged)
+- Env var needed: `OPENAI_API_KEY` (package already installed)
+
 ## Proactive Buddy (Event-Driven)
 Buddy initiates — doesn't wait for the trader to type first. "Speaks before you ask."
 - Trigger events (priority order): market open → EOD debrief → high-impact news (CPI/NFP/FOMC) → inactivity pattern → X/Twitter alerts

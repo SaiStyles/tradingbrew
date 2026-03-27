@@ -1,5 +1,5 @@
 # TradingBrew — Current Status
-> Last updated: 2026-03-26 (Session 9)
+> Last updated: 2026-03-27 (Session 10)
 
 ## What This Is
 AI trading companion (Jarvis for traders). Web app built on Next.js 15 + Supabase + Anthropic API.
@@ -76,6 +76,18 @@ AI trading companion (Jarvis for traders). Web app built on Next.js 15 + Supabas
   - Query Agent (Haiku) — text-to-SQL, chain-of-thought, self-correction
   - psychology-only questions skip SQL, go straight to Hindsight
   - Buddy gets historicalQuery results, tells the story
+- **Performance Stats page (Session 10)**:
+  - `/stats` route — full trading analytics dashboard
+  - 12 KPI cards: Net PnL, Win Rate, Profit Factor, Expectancy, Sharpe, Max Drawdown, Recovery Factor, Avg Win/Loss, Largest Win/Loss, Consistency Score, Streak
+  - Equity curve with drawdown overlay (violet + red shading)
+  - Daily PnL bars, trade distribution histogram
+  - By day of week, by hour of day, by instrument
+  - Rolling Profit Factor (20-trade window — edge decay detector)
+  - Psychology: emotion vs avg PnL, plan adherence, execution score vs PnL
+  - 13-week calendar heatmap with hover tooltips
+  - Filter: 7D | MTD | 30D | 3M | All (default 30D)
+  - recharts 3.8.1 added to dependencies
+  - All data derived from Supabase, all aggregations computed client-side in useMemo
 
 ### DB — Clean as of Session 5
 - Dead psychological profile columns dropped from users table
@@ -88,14 +100,27 @@ AI trading companion (Jarvis for traders). Web app built on Next.js 15 + Supabas
 - **SYSTEM marker leaks into Buddy reply** — after a save, Buddy sometimes echoes [SYSTEM: Trade already saved] text visibly in reply. Cosmetic only, fix later.
 - **Hindsight credits depleted** — all retain/recall/reflect calls are 402-ing. Memory disabled until credits are topped up at Vectorize account.
 
+### Dead Code / Cleanup (low priority, not breaking)
+- `openai` package in package.json — installed but never imported anywhere, safe to remove
+- `/web/types/index.ts` — stale duplicate of `trade.ts`, unused
+- `/web/lib/voice/` — empty directory
+- `buddy_voice_id` on users table — fetched in buddy route but never used (no ElevenLabs yet)
+- `notif_morning`, `notif_news`, `notif_violations`, `notif_debrief` — stored on users, UI toggles exist, but nothing reads them (no notification system built)
+
+### Test Gaps (not breaking, good to know)
+- No tests for UI components (BuddyChat, JournalClient, TradeDrawer)
+- No tests for settings, accounts, trades PATCH/DELETE API routes
+- Hindsight integration mocked in all tests — never hit live
+- Daily note caching/invalidation logic not tested
+
 ### Pending / Not Built
-- Performance dashboard (V1: charts + filters — PnL by day, instrument win rate, hour of day, emotion vs PnL)
-- **News alerts + Proactive Buddy** ← next up
+- **Streak card on /dashboard hardcoded to "0 days"** — never implemented, fix later (real computation exists in StatsClient for reference)
+- News seeder (Finnhub → news_events table) — plumbing already done, just needs data
 - X/Twitter watchlist (user-defined accounts)
 - ElevenLabs voice (V2)
 - Tauri desktop app (V2, post-launch)
 - ~~Chart screenshots~~ — abandoned (CME futures data unavailable)
-- Voice note replay in dashboard (V2)
+- ~~Proactive Buddy~~ — dropped, not needed
 
 ---
 
@@ -137,7 +162,7 @@ Step 8: Scribe → retain() to Hindsight (async, fire-and-forget)
 ---
 
 ## Stack
-- Frontend: Next.js 15, TypeScript, TailwindCSS, Framer Motion
+- Frontend: Next.js 15, TypeScript, TailwindCSS, Framer Motion, Recharts 3.8.1
 - DB: Supabase (PostgreSQL) — clean, no dead tables
 - AI: Anthropic API (Haiku + Sonnet)
 - Memory: Hindsight gen2
