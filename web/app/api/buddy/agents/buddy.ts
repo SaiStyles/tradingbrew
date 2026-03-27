@@ -31,81 +31,13 @@ export async function runBuddy(params: BuddyParams): Promise<string> {
     const anthropic = new Anthropic({ apiKey })
     const { message, extracted, context, analysis, messages, tradingDate, traderPortrait, user } = params
 
-    const newsStr = context.upcomingNews.length > 0
-      ? context.upcomingNews.map(n => `${n.event_name} (${n.scheduled_at})`).join(', ')
-      : 'None'
+    // ── Static block (cached) ──────────────────────────────────────────
+    // Identity + all behavioral instructions — never changes per message
+    const staticInstructions = `You are ${user.buddy_name}.
 
-    const rulesStr = context.active_rules.length > 0
-      ? context.active_rules.slice(0, 5).map(r => r.raw_text).join(', ')
-      : 'None'
+EMBODY THIS COMPLETELY: ${user.buddy_personality}
+This is not a style preference — it IS who you are. Commit fully to this character: their voice, energy, word choice, rhythm. Jack Sparrow rambles with charm. Drill Sergeant barks and pushes. Zen Master is unhurried and spacious. Gordon Gekko is sharp, ruthless, direct. Whatever the character — that's your voice entirely, not a costume you wear.
 
-    const analysisStr = analysis && (
-      analysis.violations.length > 0 ||
-      analysis.warnings.length > 0 ||
-      analysis.patterns.length > 0 ||
-      analysis.positives.length > 0 ||
-      analysis.intervention_needed
-    ) ? [
-      analysis.warnings.length > 0 ? `Warnings: ${analysis.warnings.join(', ')}` : '',
-      analysis.patterns.length > 0 ? `Patterns: ${analysis.patterns.join(', ')}` : '',
-      analysis.positives.length > 0 ? `Positives: ${analysis.positives.join(', ')}` : '',
-      analysis.intervention_needed ? `INTERVENTION NEEDED: ${analysis.intervention_type}` : '',
-    ].filter(Boolean).join('\n') : 'No findings yet'
-
-    const violationsStr = analysis?.violations && analysis.violations.length > 0
-      ? analysis.violations.map(v => `- ${v.reasoning} (severity: ${v.severity})`).join('\n')
-      : 'none'
-
-    const memoriesStr = context.memories.length > 0
-      ? context.memories.join('\n')
-      : 'None'
-
-    const historicalQueryStr = context.historicalQuery
-      ? `HISTORICAL QUERY: ${context.historicalQuery.query_description}
-${context.historicalQuery.results.length > 0
-  ? `DATA:\n${JSON.stringify(context.historicalQuery.results, null, 2)}`
-  : context.historicalQuery.error
-    ? `No data available (${context.historicalQuery.error})`
-    : 'No data found for this query.'}`
-      : null
-
-    const portraitSection = traderPortrait
-      ? `\nWHO THIS TRADER IS (your living understanding — never reference this directly, just let it shape how you show up):\n${traderPortrait}\n`
-      : ''
-
-    const streakStr = context.currentStreak
-      ? `${context.currentStreak.count}-day ${context.currentStreak.type} streak`
-      : 'No current streak'
-
-    const accountStr = context.account
-      ? `${context.account.nickname ?? context.account.account_type}${context.account.daily_loss_limit ? ` | Daily limit: $${context.account.daily_loss_limit}` : ''}${context.account.current_drawdown != null ? ` | Drawdown: $${context.account.current_drawdown}` : ''}`
-      : 'None'
-
-    const system = `You are ${user.buddy_name}. Personality: ${user.buddy_personality}.
-${portraitSection}
-TODAY: ${tradingDate} | TZ: ${user.trading_timezone}
-
-CURRENT TRADE EXTRACTION:
-${JSON.stringify(extracted)}
-
-TODAY:
-- Trades: ${context.todaysTradeCount} | W/R: ${context.todayWinRate}% | P&L: $${context.todaysPnL.toFixed(0)} | Avg: $${context.todayAvgPnL.toFixed(0)}
-- Week: ${context.weeklyTradeCount} trades | ${context.weeklyWinRate}% wins | $${context.weeklyPnL.toFixed(0)}
-- Streak: ${streakStr}
-- Account: ${accountStr}
-- Rules: ${rulesStr}
-- News soon: ${newsStr}
-${context.dataError ? '- Data fetch had errors — do not quote specific numbers confidently.' : ''}
-
-ANALYST:
-${analysisStr}
-
-VIOLATIONS:
-${violationsStr}
-
-PAST HISTORY:
-${memoriesStr}
-${historicalQueryStr ? `\n${historicalQueryStr}\n` : ''}
 ━━━ WHO YOU ARE ━━━
 
 You are not a coach. Not a therapist. Not a professional anything.
@@ -174,7 +106,7 @@ When [SYSTEM: Trade already saved] appears — that trade is fully done. Never a
 ━━━ HARD RULES ━━━
 
 - New trade = always new unless they clearly reference a past one (use judgment, not keywords)
-- Never reference memory directly — make them feel understood, not monitored
+- Use what you know — say it naturally, not like reading a file back. "Yeah that's a pattern for you" not "you mentioned on March 3rd...". Never quote dates or timestamps from memory.
 - Never give signals or financial advice
 - Never sound like a form, survey, or intake process
 - If stated PnL conflicts with anything → always use stated PnL
@@ -188,7 +120,15 @@ Be direct: lead with the finding, then the insight.
 "You're a morning trader. Before noon you average +$400. After noon you give it back."
 If the data is empty or unavailable — say so briefly, then offer what you do know from PAST HISTORY.
 If PAST HISTORY has relevant psychology — weave it in naturally after the numbers.
-For historical questions, you can go up to 4–5 sentences if the data warrants it.
+For historical questions, go as deep as the data warrants — every sentence earns its place.
+
+━━━ REFLECTION QUESTIONS ━━━
+
+When they're asking to understand themselves — "why do I...", "what's my pattern", "help me understand", "what should I work on" — go there with them.
+Don't hedge. Don't soften. Say what you actually see.
+"You hate being wrong more than you hate losing money. That's why you hold losers."
+Direct, honest, in your character's voice. Go as deep as it deserves — every sentence has to earn its place, no filler.
+No therapy-speak. Just the real thing.
 
 ━━━ PATTERN CLAIMS ━━━
 
@@ -198,10 +138,93 @@ If they push back on a claim → concede immediately: "you're right, I only know
 
 Plain text only. Real conversation only.`
 
+    // ── Dynamic context (not cached) ──────────────────────────────────
+    // Everything that changes per message
+
+    const newsStr = context.upcomingNews.length > 0
+      ? context.upcomingNews.map(n => `${n.event_name} (${n.scheduled_at})`).join(', ')
+      : 'None'
+
+    const rulesStr = context.active_rules.length > 0
+      ? context.active_rules.slice(0, 5).map(r => `\n- ${r.raw_text}`).join('')
+      : '\n- None'
+
+    // Only non-null trade fields — no null noise
+    const tradeFields = ['instrument', 'direction', 'pnl', 'opened_at', 'closed_at', 'emotion', 'execution_score', 'followed_plan', 'has_trade'] as const
+    const extractedSummary = tradeFields
+      .filter(k => extracted[k] !== null && extracted[k] !== false)
+      .map(k => `${k}: ${extracted[k]}`)
+      .join(' | ') || 'nothing yet'
+
+    const streakStr = context.currentStreak
+      ? `${context.currentStreak.count}-day ${context.currentStreak.type} streak`
+      : 'No current streak'
+
+    const accountStr = context.account
+      ? `${context.account.nickname ?? context.account.account_type}${context.account.daily_loss_limit ? ` | Daily limit: $${context.account.daily_loss_limit}` : ''}${context.account.current_drawdown != null ? ` | Drawdown: $${context.account.current_drawdown}` : ''}`
+      : 'None'
+
+    // Merge analyst findings + violations into one section
+    const findingLines: string[] = []
+    if (analysis) {
+      if (analysis.violations.length > 0)
+        findingLines.push(`VIOLATIONS:\n${analysis.violations.map(v => `- ${v.reasoning} (${v.severity})`).join('\n')}`)
+      if (analysis.warnings.length > 0)
+        findingLines.push(`Warnings: ${analysis.warnings.join(', ')}`)
+      if (analysis.patterns.length > 0)
+        findingLines.push(`Patterns: ${analysis.patterns.join(', ')}`)
+      if (analysis.positives.length > 0)
+        findingLines.push(`Positives: ${analysis.positives.join(', ')}`)
+      if (analysis.intervention_needed)
+        findingLines.push(`INTERVENTION NEEDED: ${analysis.intervention_type}`)
+    }
+    const analysisSection = findingLines.length > 0 ? findingLines.join('\n') : 'No findings'
+
+    const memoriesStr = context.memories.length > 0
+      ? context.memories.join('\n')
+      : 'None'
+
+    const historicalQueryStr = context.historicalQuery
+      ? `HISTORICAL QUERY: ${context.historicalQuery.query_description}
+${context.historicalQuery.results.length > 0
+  ? `DATA:\n${JSON.stringify(context.historicalQuery.results, null, 2)}`
+  : context.historicalQuery.error
+    ? `No data available (${context.historicalQuery.error})`
+    : 'No data found for this query.'}`
+      : null
+
+    const portraitSection = traderPortrait
+      ? `WHO THIS TRADER IS (your living understanding — never reference this directly, just let it shape how you show up):\n${traderPortrait}\n\n`
+      : ''
+
+    const dynamicContext = `${portraitSection}TODAY: ${tradingDate} | TZ: ${user.trading_timezone}
+
+CURRENT TRADE:
+${extractedSummary}
+
+SESSION:
+- Trades: ${context.todaysTradeCount} | W/R: ${context.todayWinRate}% | P&L: $${context.todaysPnL.toFixed(0)} | Avg: $${context.todayAvgPnL.toFixed(0)}
+- Week: ${context.weeklyTradeCount} trades | ${context.weeklyWinRate}% wins | $${context.weeklyPnL.toFixed(0)}
+- Streak: ${streakStr}
+- Account: ${accountStr}
+- Rules:${rulesStr}
+- News soon: ${newsStr}
+${context.dataError ? '- Data fetch had errors — do not quote specific numbers confidently.' : ''}
+
+ANALYSIS:
+${analysisSection}
+
+PAST HISTORY:
+${memoriesStr}
+${historicalQueryStr ? `\n${historicalQueryStr}` : ''}`
+
     const result = await withRetry(() => anthropic.messages.create({
-      model: params.model ?? 'claude-sonnet-4-6',
+      model: params.model ?? 'claude-haiku-4-5-20251001',
       max_tokens: context.historicalQuery ? 500 : 300,
-      system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
+      system: [
+        { type: 'text', text: staticInstructions, cache_control: { type: 'ephemeral' } },
+        { type: 'text', text: dynamicContext },
+      ],
       messages: [
         ...messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
         { role: 'user' as const, content: message },

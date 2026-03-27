@@ -71,11 +71,6 @@ export default function RulesPage() {
     setTimeout(() => setToast(null), 3000)
   }
 
-  // Clear violation badge when user visits this page
-  useEffect(() => {
-    fetch('/api/rules/clear-badge', { method: 'POST' }).catch(() => {})
-  }, [])
-
   // Fetch rules
   useEffect(() => {
     async function load() {

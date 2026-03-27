@@ -75,11 +75,7 @@ export async function runQueryAnalyst(params: QueryAnalystParams): Promise<Query
 
     const anthropic = new Anthropic({ apiKey })
 
-    const prompt = `You are a SQL query generator for a trading journal.
-
-A trader asked: "${question}"
-
-Today: ${currentDate} (timezone: ${tradingTimezone})
+    const staticSystem = `You are a SQL query generator for a trading journal.
 
 ${SCHEMA}
 
@@ -98,8 +94,9 @@ If the question is purely about psychology/emotions/feelings with no numerical c
     const result = await withRetry(() => anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 600,
+      system: [{ type: 'text', text: staticSystem, cache_control: { type: 'ephemeral' } }],
       messages: [
-        { role: 'user', content: prompt },
+        { role: 'user', content: `A trader asked: "${question}"\n\nToday: ${currentDate} (timezone: ${tradingTimezone})` },
         { role: 'assistant', content: '{' },
       ],
     }))

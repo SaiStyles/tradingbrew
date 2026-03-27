@@ -1,8 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { ViolationBadge } from '@/components/layout/ViolationBadge'
-
 const navItems = [
   { label: 'Dashboard', href: '/dashboard' },
   { label: 'Journal', href: '/journal' },
@@ -35,7 +33,6 @@ export default async function DashboardLayout({
               className="flex items-center justify-between text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg px-3 py-2 text-sm transition"
             >
               <span>{item.label}</span>
-              {item.href === '/rules' && <ViolationBadge userId={user.id} />}
             </Link>
           ))}
         </nav>

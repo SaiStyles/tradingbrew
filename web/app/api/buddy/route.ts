@@ -255,23 +255,10 @@ export async function POST(request: NextRequest) {
           .eq('id', v.rule_id)
       )
 
-      const writes = [
+      Promise.all([
         ...violationInserts.map(p => Promise.resolve(p)),
         ...triggerUpdates.map(p => Promise.resolve(p)),
-      ]
-
-      console.log('[violations] session id:', currentSessionId, '| count:', analysis.violations.length)
-
-      if (currentSessionId) {
-        writes.push(
-          Promise.resolve(supabase.rpc('increment_violation_count', {
-            target_session_id: currentSessionId,
-            increment_by: analysis.violations.length,
-          }))
-        )
-      }
-
-      Promise.all(writes)
+      ])
         .then(() => console.log('[violations] writes complete'))
         .catch(err => console.error('[violations] write failed:', err))
     }
