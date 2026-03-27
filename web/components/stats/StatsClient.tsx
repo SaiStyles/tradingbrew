@@ -164,9 +164,10 @@ export function StatsClient({ trades }: { trades: Trade[] }) {
 
   // ── Filter by range ────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
+    const valid = trades.filter(t => !!t.opened_at)
     const cutoff = getCutoff(range)
-    if (!cutoff) return trades
-    return trades.filter(t => new Date(t.opened_at) >= cutoff)
+    if (!cutoff) return valid
+    return valid.filter(t => new Date(t.opened_at) >= cutoff)
   }, [trades, range])
 
   // ── Core metrics ──────────────────────────────────────────────────────────
@@ -404,6 +405,7 @@ export function StatsClient({ trades }: { trades: Trade[] }) {
   const calendarData = useMemo(() => {
     const dailyPnl: Record<string, number> = {}
     trades.forEach(t => {
+      if (!t.opened_at) return
       const day = t.opened_at.split('T')[0]
       dailyPnl[day] = (dailyPnl[day] || 0) + t.pnl
     })
