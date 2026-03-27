@@ -39,6 +39,11 @@ export interface NewsEvent {
   scheduled_at: string
   impact: string
   currency: string | null
+  country: string | null
+  previous: string | null
+  forecast: string | null
+  actual: string | null
+  unit: string | null
 }
 
 export interface Rule {
