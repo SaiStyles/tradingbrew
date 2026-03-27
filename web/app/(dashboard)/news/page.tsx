@@ -1,25 +1,15 @@
-import { createClient } from '@/lib/supabase/server'
-import { NewsClient } from '@/components/news/NewsClient'
-import type { NewsEvent } from '@/types/trade'
+import TradingViewCalendar from '@/components/news/TradingViewCalendar'
 
-export default async function NewsPage() {
-  const supabase = await createClient()
-  const twoWeeksFromNow = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
-
-  const { data: events } = await supabase
-    .from('news_events')
-    .select('*')
-    .gte('scheduled_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
-    .lte('scheduled_at', twoWeeksFromNow)
-    .order('scheduled_at', { ascending: true })
-
+export default function NewsPage() {
   return (
-    <div className="p-6">
+    <div className="p-6 h-screen flex flex-col">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-white">Economic Calendar</h1>
-        <p className="text-zinc-500 text-sm mt-1">High-impact events for the next 2 weeks.</p>
+        <p className="text-zinc-500 text-sm mt-1">High-impact events — live via TradingView.</p>
       </div>
-      <NewsClient events={(events ?? []) as NewsEvent[]} />
+      <div className="flex-1 min-h-0">
+        <TradingViewCalendar />
+      </div>
     </div>
   )
 }
