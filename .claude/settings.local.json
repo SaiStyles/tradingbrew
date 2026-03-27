@@ -28,7 +28,9 @@
       "WebFetch(domain:hindsight.vectorize.io)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(xargs ls:*)",
-      "Bash(grep -r \"TODO\\\\|FIXME\\\\|XXX\\\\|HACK\\\\|BUG\\\\|INCOMPLETE\" /c/Users/saist/tradingbrew/web --include=*.ts --include=*.tsx)"
+      "Bash(grep -r \"TODO\\\\|FIXME\\\\|XXX\\\\|HACK\\\\|BUG\\\\|INCOMPLETE\" /c/Users/saist/tradingbrew/web --include=*.ts --include=*.tsx)",
+      "Bash(curl:*)",
+      "WebFetch(domain:site.financialmodelingprep.com)"
     ]
   }
 }
