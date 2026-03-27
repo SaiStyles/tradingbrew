@@ -22,9 +22,9 @@ const IMPACTS = [
 function loadPrefs() {
   try {
     const s = localStorage.getItem(STORAGE_KEY)
-    return s ? JSON.parse(s) : { country: 'us', importance: '1' }
+    return s ? JSON.parse(s) : { country: '', importance: '1' }
   } catch {
-    return { country: 'us', importance: '1' }
+    return { country: '', importance: '1' }
   }
 }
 
@@ -49,7 +49,7 @@ function Widget({ country, importance }: { country: string; importance: string }
       height: '100%',
       locale: 'en',
       importanceFilter: importance,
-      countryFilter: country,
+      ...(country ? { countryFilter: country } : {}),
     })
 
     container.current.appendChild(script)
@@ -63,7 +63,7 @@ function Widget({ country, importance }: { country: string; importance: string }
 }
 
 export default function TradingViewCalendar() {
-  const [prefs, setPrefs] = useState({ country: 'us', importance: '1' })
+  const [prefs, setPrefs] = useState({ country: '', importance: '1' })
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
@@ -72,7 +72,7 @@ export default function TradingViewCalendar() {
   }, [])
 
   function setCountry(value: string) {
-    const next = { ...prefs, country: value }
+    const next = { ...prefs, country: prefs.country === value ? '' : value }
     setPrefs(next)
     savePrefs(next)
   }
