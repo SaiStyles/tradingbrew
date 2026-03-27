@@ -18,7 +18,7 @@ export default function TradingViewCalendar() {
       height: '100%',
       locale: 'en',
       importanceFilter: '1',
-      countryFilter: 'us,eu,gb,jp,ca,au,nz,ch,cn',
+      countryFilter: 'us',
     })
 
     container.current.appendChild(script)
