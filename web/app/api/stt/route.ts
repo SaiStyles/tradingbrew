@@ -4,13 +4,17 @@ import { NextRequest, NextResponse } from 'next/server'
 
 // Whisper-1 known hallucinations on near-silent audio
 const HALLUCINATION_PATTERNS = [
-  /^thank you\.?$/i,
-  /^thanks\.?$/i,
+  /^thank you/i,           // "thank you", "thank you for watching", etc.
+  /^thanks/i,              // "thanks for watching", "thanks!", etc.
+  /^please subscribe/i,
+  /^don't forget to/i,
+  /^like and subscribe/i,
   /^you\.?$/i,
   /^\.+$/,
   /^,$/,
   /^!$/,
   /^\s*$/,
+  /^[\s.!?,]+$/,
 ]
 
 export async function POST(request: NextRequest) {

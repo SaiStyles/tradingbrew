@@ -39,7 +39,7 @@ export function useWhisperSTT({
     const blob = new Blob(chunks, { type: mimeType || 'audio/webm' })
 
     // Skip tiny blobs — Whisper hallucinates on near-silence ("Thank you.", "You", etc.)
-    if (blob.size < 3000) return
+    if (blob.size < 6000) return
 
     setIsTranscribing(true)
     try {
