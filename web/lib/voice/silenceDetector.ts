@@ -25,6 +25,7 @@ export class SilenceDetector {
   }
 
   start() {
+    let logTick = 0
     const tick = () => {
       this.analyser.getFloatTimeDomainData(this.dataArray)
 
@@ -36,12 +37,19 @@ export class SilenceDetector {
       const rms = Math.sqrt(sum / this.dataArray.length)
       const db = rms > 0 ? 20 * Math.log10(rms) : -Infinity
 
+      // Log every ~60 frames (~1s) so we can see mic levels in console
+      logTick++
+      if (logTick % 60 === 0) {
+        console.log(`[vad] db: ${db.toFixed(1)} | threshold: ${this.opts.silenceThresholdDb} | speech: ${this.isSpeechActive}`)
+      }
+
       const isSilent = db < this.opts.silenceThresholdDb
 
       if (!isSilent) {
         this.silenceStart = null
         if (!this.isSpeechActive) {
           this.isSpeechActive = true
+          console.log('[vad] speech detected, db:', db.toFixed(1))
           this.opts.onSpeechDetected()
         }
       } else if (this.isSpeechActive) {
@@ -50,6 +58,7 @@ export class SilenceDetector {
         } else if (Date.now() - this.silenceStart >= this.opts.silenceDurationMs) {
           this.isSpeechActive = false
           this.silenceStart = null
+          console.log('[vad] silence detected — sending to Whisper')
           this.opts.onSilenceDetected()
         }
       }

@@ -117,11 +117,9 @@ export default function BuddyChat({ buddyName, buddyVoice }: { buddyName: string
         setIsSpeaking(false)
       }
     },
-    // Suppress Whisper while Buddy is speaking — echoCancellation handles hardware,
-    // this handles the window between speech start and OS echo cancellation kicking in
     shouldSuppress: () => isSpeakingRef.current,
-    silenceDurationMs: 1500,
-    silenceThresholdDb: -50,
+    silenceDurationMs: 1200,
+    silenceThresholdDb: -45,  // -45 is more permissive than -50 for typical mics
   })
 
   const toggleSilentMode = () => {
@@ -235,6 +233,23 @@ export default function BuddyChat({ buddyName, buddyVoice }: { buddyName: string
             </div>
           </div>
         ))}
+        {/* Recording indicator — shows while mic detects sound */}
+        {stt.soundDetected && !silentMode && (
+          <div className="flex justify-end">
+            <div className="max-w-[80%] rounded-2xl px-4 py-2 text-sm bg-blue-600/30 text-blue-300 rounded-br-sm italic flex items-center gap-2">
+              <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse" />
+              recording...
+            </div>
+          </div>
+        )}
+        {/* Transcribing indicator — shows while Whisper processes */}
+        {stt.isTranscribing && !silentMode && (
+          <div className="flex justify-end">
+            <div className="max-w-[80%] rounded-2xl px-4 py-2 text-sm bg-zinc-700/50 text-zinc-400 rounded-br-sm italic">
+              transcribing...
+            </div>
+          </div>
+        )}
         {loading && (
           <div className="flex justify-start">
             <div className="bg-zinc-800 rounded-2xl rounded-bl-sm px-4 py-2">
