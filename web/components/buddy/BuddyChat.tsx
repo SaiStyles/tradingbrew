@@ -119,7 +119,7 @@ export default function BuddyChat({ buddyName, buddyVoice }: { buddyName: string
     },
     shouldSuppress: () => isSpeakingRef.current,
     silenceDurationMs: 1200,
-    silenceThresholdDb: -45,  // -45 is more permissive than -50 for typical mics
+    silenceThresholdDb: -35,  // raised: ambient noise (~-40dB) must be below this to count as silence
   })
 
   const toggleSilentMode = () => {
