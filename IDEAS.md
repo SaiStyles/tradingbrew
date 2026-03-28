@@ -60,16 +60,16 @@ Replace `window.speechSynthesis` with OpenAI TTS for a human-sounding Buddy voic
 - BuddyChat.tsx: replace `speak()` function only, mic/STT stays Web Speech (free, unchanged)
 - Env var needed: `OPENAI_API_KEY` (package already installed)
 
-## Silent Mode (Focus Mode)
+## ✅ Silent Mode (Focus Mode) — BUILT (Session 13)
 Trader speaks freely while in a session — Buddy listens but never replies. No interruption to flow state.
 - Toggle in BuddyChat: "Silent Mode" — mic stays active, speech-to-text still runs
 - Every utterance goes through the full pipeline (Extractor → Context → Analyst → SaveDetector → Scribe) silently
 - No Buddy response generated or displayed while mode is on
-- When trader turns off mic / exits silent mode → Buddy surfaces a brief summary: what was logged, anything worth flagging, one line
-- Use case: trader in the zone, doesn't want back-and-forth, just wants to narrate trades and have them captured
-- Scribe still writes observations the whole time — memory builds even in silence
-- Viral angle: "talk to a wall that actually listens" — traders who hate journaling will love this
-- Tech: just gate the Buddy response in BuddyChat.tsx when silentMode = true. Pipeline unchanged.
+- When trader exits silent mode → Buddy surfaces a brief summary via surfaceSilentSummary()
+- Tech: silentModeRef + silentLogRef in BuddyChat.tsx — pipeline runs unchanged, response gated on ref
+- **Known issue**: Chrome Web Speech API is unreliable — stuck isSpeakingRef, user gesture chain requirements,
+  recognition instance must be recreated on every onend restart. Voice input may not work reliably until
+  OpenAI Whisper or Deepgram replaces Web Speech STT.
 
 ## Proactive Buddy (Event-Driven)
 Buddy initiates — doesn't wait for the trader to type first. "Speaks before you ask."

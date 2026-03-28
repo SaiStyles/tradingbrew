@@ -198,7 +198,8 @@ SCRIBE (Haiku)
 - If memory has Buddy implication, adds [Buddy: specific note] inline
 
 ## Buddy Rules — CRITICAL
-- Never reference memory directly — FEEL understood not watched
+- Use what you know naturally — "Yeah that's a pattern for you" not "you mentioned on March 3rd..."
+- Never quote dates, timestamps, or file back anything verbatim from memory
 - WRONG: "You mentioned your wife is sick"
 - RIGHT: "How's everything at home?"
 - Never say "I remember" or "your data shows"
@@ -220,7 +221,7 @@ SCRIBE (Haiku)
      BuddyChat component, voice
 - ✅ Trade journal UI, journal API, trade drawer,
      soft delete, incomplete badge
-- ✅ 6-agent pipeline live (Extractor, Context,
+- ✅ 7-agent pipeline live (Extractor, Context, QueryAnalyst,
      Analyst, Buddy, SaveDetector, Scribe)
 - ✅ Hindsight gen2 memory — semantic recall, Mental Models,
      trader portrait via reflect(), Directives
@@ -228,7 +229,11 @@ SCRIBE (Haiku)
 - ✅ Conversation history (20 messages)
 - ✅ Trades saving with all fields
 - ✅ Duplicate prevention via system messages
-- ✅ Shared JSON parser across all agents
+- ✅ Zod runtime validation on all agent outputs — parseWithSchema() replaces unsafe JSON casts
+- ✅ Centralised agent interfaces (BuddyParams, SaveDetectorParams, ScribeParams,
+     QueryAnalystParams, QueryAnalystOutput) in types/trade.ts
+- ✅ Immutable context — enrichedContext spread, never mutates original ContextPacket
+- ✅ Shared JSON parser + parseWithSchema across all agents
 - ✅ Background Analyst (non-blocking)
 - ✅ Trading timezone support
 - ✅ Settings page (timezone, buddy name,
@@ -238,7 +243,7 @@ SCRIBE (Haiku)
 - ✅ Agent fixes (retry logic, parser fix,
      Analyst injection, trade collision handling,
      max_tokens, emotion_tag consistency)
-- ✅ Test suite: 71/71 passing (parser, extractor, analyst, scribe, save-detector, pipeline, chat-scenarios, scribe-direct)
+- ✅ Test suite: 94/94 passing (parser, extractor, analyst, scribe, save-detector, pipeline, chat-scenarios, scribe-direct, query-analyst)
 - ✅ Conversational Analytics — Query Agent, text-to-SQL, self-correction loop,
      Buddy storytelling, Supabase RPC executor (requires setup-analytics-function.sql)
 - ✅ Scribe time-anchoring — day of week in every observation,
@@ -260,7 +265,9 @@ SCRIBE (Haiku)
 - ⬜ Streak card on /dashboard hardcoded "0 days" — fix later
 - ⬜ OpenAI TTS — replace Web Speech Synthesis (plan in IDEAS.md)
 - ⬜ News alerts — DROPPED. News tab is standalone TradingView embed, kept separate from Buddy.
-- ⬜ Confession Mode (voice recording post-trade)
+- ⬜ Silent Mode — built in BuddyChat.tsx (silentModeRef + silentLogRef + surfaceSilentSummary),
+     voice input reliability issues remain (Chrome Web Speech API bugs)
+- ⬜ Confession Mode — DROPPED
 - ⬜ Tauri desktop app
 
 ## Coding Rules

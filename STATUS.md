@@ -1,9 +1,9 @@
 # TradingBrew — Current Status
-> Last updated: 2026-03-27 (Session 11)
+> Last updated: 2026-03-28 (Session 13)
 
 ## What This Is
 AI trading companion (Jarvis for traders). Web app built on Next.js 15 + Supabase + Anthropic API.
-6-agent pipeline: Extractor → Context → (Analyst + Buddy + SaveDetector parallel) → Scribe (post-response).
+7-agent pipeline: Extractor → Context → QueryAnalyst → (Analyst + Buddy + SaveDetector parallel) → Scribe (post-response).
 
 ---
 
@@ -65,7 +65,7 @@ AI trading companion (Jarvis for traders). Web app built on Next.js 15 + Supabas
 - **Route integration tests added (Session 6 late)**:
   - `web/__tests__/route-integration.test.ts` — 6 tests, full pipeline with mocked Supabase + real Claude API
   - Tests: 401 auth, 400 bad body, small talk, full trade save, incomplete trade, session context
-- Test suite: 71 tests — all pass
+- Test suite: 94 tests — all pass
 - **Psychology data layer (Sessions 8–9)**:
   - `psychology_log` table — Scribe writes here after every Buddy response (deduped)
   - Scribe dedup: today's logs injected into existingMemories, max 1 per run, semantic duplicate check
@@ -88,6 +88,23 @@ AI trading companion (Jarvis for traders). Web app built on Next.js 15 + Supabas
   - Filter: 7D | MTD | 30D | 3M | All (default 30D)
   - recharts 3.8.1 added to dependencies
   - All data derived from Supabase, all aggregations computed client-side in useMemo
+- **Session 12 — Buddy prompt overhaul**:
+  - Complete prompt rewrite — genuine friend voice, not a service bot
+  - Character system: EMBODY THIS COMPLETELY — Jack Sparrow, Drill Sergeant, Zen Master, Gordon Gekko etc.
+  - Reflection questions: go as deep as deserved, no sentence cap, no hedging
+  - Memory rule: use what you know naturally, never quote timestamps or dates
+  - Pattern Claims guard: never assert a behavior without PAST HISTORY evidence
+  - Historical questions: tell the story behind the numbers, not a spreadsheet
+  - Buddy prompt caching: static instructions cached, dynamic context uncached
+  - Model routing: Haiku default, Sonnet only on intervention_needed=true
+- **Session 13 — Zod refactor + Silent Mode**:
+  - Zod runtime validation on all 5 agent outputs (extractor, analyst, save-detector, scribe, query-analyst)
+  - parseWithSchema<T>() in lib/claude/parser.ts — replaces unsafe parseJSON<T> casts
+  - All agent param interfaces centralised in types/trade.ts (BuddyParams, SaveDetectorParams, ScribeParams, QueryAnalystParams, QueryAnalystOutput)
+  - Immutable context: enrichedContext = { ...context, historicalQuery } — no more mutation
+  - Silent Mode built in BuddyChat.tsx (silentModeRef + silentLogRef + surfaceSilentSummary)
+  - Chrome Web Speech API bugs documented: stuck isSpeakingRef, user gesture chain, instance reuse
+  - Confession Mode dropped
 - **Economic Calendar page (Session 11)**:
   - `/news` route — TradingView embed widget (free, no API key)
   - Country filter buttons: USA | EUR | GBP | JPY | CAD | AUD (toggle)
@@ -122,12 +139,15 @@ AI trading companion (Jarvis for traders). Web app built on Next.js 15 + Supabas
 
 ### Pending / Not Built
 - **Streak card on /dashboard hardcoded to "0 days"** — never implemented, fix later (real computation exists in StatsClient for reference)
+- **Silent Mode** — built (BuddyChat.tsx) but voice input (Chrome Web Speech API) still unreliable
+- **OpenAI TTS** — replace Web Speech Synthesis ($15/1M chars, natural voice, plan in IDEAS.md)
 - ~~News seeder (Finnhub → news_events table)~~ — replaced by TradingView embed widget
 - X/Twitter watchlist (user-defined accounts)
 - ElevenLabs voice (V2)
 - Tauri desktop app (V2, post-launch)
 - ~~Chart screenshots~~ — abandoned (CME futures data unavailable)
 - ~~Proactive Buddy~~ — dropped, not needed
+- ~~Confession Mode~~ — dropped
 
 ---
 
@@ -141,6 +161,11 @@ Step 1: Load profile + session (4s timeout)
 Step 2: Extractor (Haiku) + Context (pure TS) + Portrait (reflect) — ALL parallel
     - Context: today trades + 7-day history + rules + account + news + Hindsight recall()
     - Portrait: reflect() with 3s timeout, cached per trading day
+    ↓
+Step 2.5: QueryAnalyst (Haiku) — gated on query_type === 'historical_analysis'
+    - text-to-SQL, self-correction on errors
+    - psychology-only skips SQL, goes straight to Hindsight
+    - results injected into enrichedContext (immutable spread, never mutates context)
     ↓
 Step 3: Buddy + Analyst + SaveDetector — ALL parallel
     - Buddy: Haiku by default, Sonnet only when intervention_needed=true
