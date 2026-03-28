@@ -41,7 +41,8 @@ export async function POST(request: NextRequest) {
 
     const mime = mimeType || audioFile.type || 'audio/webm'
     let ext = 'webm'
-    if (mime.includes('ogg')) ext = 'ogg'
+    if (mime.includes('wav')) ext = 'wav'
+    else if (mime.includes('ogg')) ext = 'ogg'
     else if (mime.includes('mp4')) ext = 'mp4'
 
     const arrayBuffer = await audioFile.arrayBuffer()

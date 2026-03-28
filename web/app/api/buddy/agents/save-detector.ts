@@ -85,7 +85,13 @@ trade_data is null when save_trade is false.`
     const raw = result.content[0].type === 'text' ? '{' + result.content[0].text : ''
     const parsed = parseWithSchema(raw, SaveDetectorOutputSchema)
     if (!parsed) return fallback
-    return { ...parsed, reply: '' }
+    // Strip null values from trade_data — TradeRecord fields are string/number, not nullable
+    const trade_data = parsed.trade_data
+      ? Object.fromEntries(
+          Object.entries(parsed.trade_data).filter(([, v]) => v !== null)
+        ) as Partial<import('@/types/trade').TradeRecord>
+      : null
+    return { ...parsed, trade_data, reply: '' }
   } catch (e) {
     console.error('[save-detector] failed:', e)
     return fallback

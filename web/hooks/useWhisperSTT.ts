@@ -1,65 +1,80 @@
 'use client'
 
 import { useRef, useState, useCallback } from 'react'
-import { SilenceDetector } from '@/lib/voice/silenceDetector'
-import { getSupportedMimeType, mimeToExtension } from '@/lib/voice/getMimeType'
+
+// Encode Float32Array PCM (16kHz mono) from Silero VAD to WAV blob for Whisper
+function encodeWav(samples: Float32Array, sampleRate = 16000): Blob {
+  const dataLen = samples.length * 2  // 16-bit PCM
+  const buffer = new ArrayBuffer(44 + dataLen)
+  const view = new DataView(buffer)
+
+  const writeStr = (offset: number, str: string) => {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i))
+  }
+
+  writeStr(0, 'RIFF')
+  view.setUint32(4, 36 + dataLen, true)
+  writeStr(8, 'WAVE')
+  writeStr(12, 'fmt ')
+  view.setUint32(16, 16, true)              // PCM chunk size
+  view.setUint16(20, 1, true)               // PCM format
+  view.setUint16(22, 1, true)               // mono
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, sampleRate * 2, true)  // byte rate
+  view.setUint16(32, 2, true)               // block align
+  view.setUint16(34, 16, true)              // bits per sample
+  writeStr(36, 'data')
+  view.setUint32(40, dataLen, true)
+
+  let offset = 44
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]))
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true)
+    offset += 2
+  }
+
+  return new Blob([buffer], { type: 'audio/wav' })
+}
 
 interface UseWhisperSTTOptions {
   onTranscript: (text: string) => void
   onSpeechStart?: () => void
   shouldSuppress?: () => boolean  // return true to skip sending to Whisper (e.g. while TTS plays)
-  silenceThresholdDb?: number     // default -50
-  silenceDurationMs?: number      // default 1500
 }
 
 export function useWhisperSTT({
   onTranscript,
   onSpeechStart,
   shouldSuppress,
-  silenceThresholdDb = -50,
-  silenceDurationMs = 1500,
 }: UseWhisperSTTOptions) {
   const [isListening, setIsListening] = useState(false)
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [soundDetected, setSoundDetected] = useState(false)
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const vadRef = useRef<any>(null)
   const streamRef = useRef<MediaStream | null>(null)
-  const recorderRef = useRef<MediaRecorder | null>(null)
-  const detectorRef = useRef<SilenceDetector | null>(null)
-  const audioCtxRef = useRef<AudioContext | null>(null)
-  const chunksRef = useRef<Blob[]>([])
-  const mimeTypeRef = useRef<string>('')
   const isListeningRef = useRef(false)
-  const hasSpeechRef = useRef(false)
-  const speechStartTimeRef = useRef<number | null>(null)
 
-  const sendChunkToWhisper = useCallback(async (chunks: Blob[], mimeType: string) => {
-    if (chunks.length === 0) return
+  const sendToWhisper = useCallback(async (audio: Float32Array) => {
     if (shouldSuppress?.()) return
 
-    const blob = new Blob(chunks, { type: mimeType || 'audio/webm' })
-
-    // Skip tiny blobs — Whisper hallucinates on near-silence ("Thank you.", "You", etc.)
-    if (blob.size < 6000) return
+    const blob = encodeWav(audio)
+    // Skip blobs that are too small — Whisper hallucinates on near-silence
+    if (blob.size < 3000) return
 
     setIsTranscribing(true)
     try {
       const form = new FormData()
-      form.append('audio', blob, `audio.${mimeToExtension(mimeType)}`)
-      form.append('mimeType', mimeType)
+      form.append('audio', blob, 'audio.wav')
+      form.append('mimeType', 'audio/wav')
 
-      // Do NOT set Content-Type header — browser sets it with boundary automatically
       const res = await fetch('/api/stt', { method: 'POST', body: form })
-      if (!res.ok) {
-        console.error('[stt] API error:', res.status)
-        return
-      }
+      if (!res.ok) { console.error('[stt] API error:', res.status); return }
 
       const data = await res.json() as { transcript?: string }
       const transcript = data.transcript?.trim()
-      if (transcript && transcript.length > 0) {
-        onTranscript(transcript)
-      }
+      if (transcript && transcript.length > 0) onTranscript(transcript)
     } catch (e) {
       console.error('[stt] fetch error:', e)
     } finally {
@@ -67,49 +82,14 @@ export function useWhisperSTT({
     }
   }, [onTranscript, shouldSuppress])
 
-  const stopCurrentRecorder = useCallback(() => {
-    if (recorderRef.current && recorderRef.current.state !== 'inactive') {
-      recorderRef.current.stop()
-    }
-  }, [])
-
-  const startNewRecorder = useCallback(() => {
-    if (!streamRef.current) return
-
-    const mimeType = mimeTypeRef.current
-    let recorder: MediaRecorder
-    try {
-      recorder = new MediaRecorder(streamRef.current, mimeType ? { mimeType } : {})
-    } catch {
-      recorder = new MediaRecorder(streamRef.current)
-    }
-
-    chunksRef.current = []
-    hasSpeechRef.current = false
-    speechStartTimeRef.current = null
-
-    recorder.ondataavailable = (e) => {
-      if (e.data.size > 0) chunksRef.current.push(e.data)
-    }
-
-    recorder.onstop = () => {
-      if (hasSpeechRef.current && isListeningRef.current) {
-        sendChunkToWhisper([...chunksRef.current], mimeTypeRef.current)
-      }
-      chunksRef.current = []
-      if (isListeningRef.current) {
-        startNewRecorder()
-      }
-    }
-
-    recorder.start()
-    recorderRef.current = recorder
-  }, [sendChunkToWhisper])
-
   const start = useCallback(async () => {
     if (isListeningRef.current) return
 
     try {
+      // Dynamic import — @ricky0123/vad-web is browser-only, must not run during SSR
+      const { MicVAD } = await import('@ricky0123/vad-web')
+
+      // Own the stream so we can control audio constraints (echo cancel, noise suppress)
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -117,75 +97,61 @@ export function useWhisperSTT({
           sampleRate: 16000,
         },
       })
-
       streamRef.current = stream
-      mimeTypeRef.current = getSupportedMimeType()
 
-      const audioCtx = new AudioContext()
-      audioCtxRef.current = audioCtx
-      const source = audioCtx.createMediaStreamSource(stream)
-
-      const detector = new SilenceDetector(audioCtx, source, {
-        silenceThresholdDb,
-        silenceDurationMs,
-        onSpeechDetected: () => {
+      const vad = await MicVAD.new({
+        getStream: async () => stream,
+        baseAssetPath: '/',
+        onnxWASMBasePath: '/',
+        onSpeechStart: () => {
           setSoundDetected(true)
-          hasSpeechRef.current = true
-          speechStartTimeRef.current = Date.now()
           onSpeechStart?.()
         },
-        onSilenceDetected: () => {
+        onSpeechEnd: (audio: Float32Array) => {
           setSoundDetected(false)
-          const speechDuration = speechStartTimeRef.current
-            ? Date.now() - speechStartTimeRef.current
-            : 0
-          speechStartTimeRef.current = null
-          console.log('[stt] speech duration:', speechDuration, 'ms')
-          // Minimum 400ms of speech — filters keyboard clicks, brief noise spikes
-          if (hasSpeechRef.current && speechDuration >= 400) {
-            stopCurrentRecorder()
-          } else {
-            // Too short — reset without sending
-            hasSpeechRef.current = false
-          }
+          void sendToWhisper(audio)
         },
+        onVADMisfire: () => {
+          // Speech was too short — VAD decided it wasn't real speech
+          setSoundDetected(false)
+        },
+        positiveSpeechThreshold: 0.5,
+        negativeSpeechThreshold: 0.35,
+        minSpeechMs: 250,      // discard anything shorter than 250ms — filters keyboard clicks, brief noise
+        redemptionMs: 900,     // wait 900ms of silence before ending — natural conversational pause
+        preSpeechPadMs: 150,   // 150ms padding before speech starts — avoids clipping the first word
       })
 
-      detectorRef.current = detector
-      detector.start()
+      vadRef.current = vad
+      await vad.start()
 
       isListeningRef.current = true
       setIsListening(true)
-
-      startNewRecorder()
     } catch (e) {
       if (e instanceof DOMException && e.name === 'NotAllowedError') {
         alert('Microphone permission denied. Allow mic access in browser settings.')
       } else {
-        console.error('[stt] getUserMedia error:', e)
+        console.error('[stt] VAD init error:', e)
       }
     }
-  }, [silenceThresholdDb, silenceDurationMs, onSpeechStart, startNewRecorder, stopCurrentRecorder])
+  }, [onSpeechStart, sendToWhisper])
 
   const stop = useCallback(() => {
     isListeningRef.current = false
     setIsListening(false)
     setSoundDetected(false)
 
-    detectorRef.current?.stop()
-    detectorRef.current = null
-
-    if (recorderRef.current && recorderRef.current.state !== 'inactive') {
-      recorderRef.current.stop()
+    const cleanup = async () => {
+      if (vadRef.current) {
+        await vadRef.current.pause()
+        await vadRef.current.destroy()
+        vadRef.current = null
+      }
+      streamRef.current?.getTracks().forEach(t => t.stop())
+      streamRef.current = null
     }
-    recorderRef.current = null
-
-    streamRef.current?.getTracks().forEach(t => t.stop())
-    streamRef.current = null
-
-    audioCtxRef.current?.close()
-    audioCtxRef.current = null
+    void cleanup()
   }, [])
 
-  return { isListening, isTranscribing, soundDetected, start, stop, stopCurrentRecorder }
+  return { isListening, isTranscribing, soundDetected, start, stop }
 }

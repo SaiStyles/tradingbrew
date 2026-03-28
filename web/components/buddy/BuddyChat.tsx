@@ -1,7 +1,15 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useWhisperSTT } from '@/hooks/useWhisperSTT'
+
+// Split text into sentences so we can fire TTS requests in parallel
+// and start playing sentence 1 while sentence 2 is still being fetched.
+function splitSentences(text: string): string[] {
+  // Split after .!? followed by whitespace + capital letter/digit/quote
+  const parts = text.split(/(?<=[.!?])\s+(?=[A-Z"'\d])/)
+  return parts.map(s => s.trim()).filter(s => s.length > 0)
+}
 
 type Message = {
   role: 'user' | 'buddy'
@@ -34,52 +42,86 @@ export default function BuddyChat({ buddyName, buddyVoice }: { buddyName: string
   const silentLogRef = useRef<SilentLogEntry[]>([])
   const audioCtxRef = useRef<AudioContext | null>(null)
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null)
+  // Incremented every time speak() is called — older calls check this and exit early
+  const speakGenRef = useRef(0)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  const speak = async (text: string) => {
+  // Fetch a single TTS chunk — returns ArrayBuffer or null on failure
+  const fetchTTSBuffer = useCallback(async (sentence: string): Promise<ArrayBuffer | null> => {
+    try {
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: sentence, voice: buddyVoice || 'nova' }),
+      })
+      if (!res.ok) return null
+      return await res.arrayBuffer()
+    } catch {
+      return null
+    }
+  }, [buddyVoice])
+
+  // Play a single ArrayBuffer through the AudioContext — resolves when playback ends
+  const playBuffer = useCallback((arrayBuffer: ArrayBuffer): Promise<void> =>
+    new Promise((resolve) => {
+      if (!isSpeakingRef.current) { resolve(); return }
+      const run = async () => {
+        try {
+          if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+            audioCtxRef.current = new AudioContext()
+          }
+          if (audioCtxRef.current.state === 'suspended') {
+            await audioCtxRef.current.resume()
+          }
+          const audioBuffer = await audioCtxRef.current.decodeAudioData(arrayBuffer)
+          if (!isSpeakingRef.current) { resolve(); return }
+          const source = audioCtxRef.current.createBufferSource()
+          source.buffer = audioBuffer
+          source.connect(audioCtxRef.current.destination)
+          audioSourceRef.current = source
+          source.onended = () => resolve()
+          source.start()
+        } catch { resolve() }
+      }
+      void run()
+    })
+  , [])
+
+  // Sentence-chunked TTS: all fetches fire in parallel, audio plays in order.
+  // Sentence 2 is usually ready before sentence 1 finishes — near-zero gap.
+  // Generation counter prevents two concurrent speak() calls from fighting:
+  // new call stops the old audio node (which resolves its playBuffer promise),
+  // then the old call sees its gen is stale and exits.
+  const speak = useCallback(async (text: string) => {
+    const myGen = ++speakGenRef.current
+
     try { audioSourceRef.current?.stop() } catch { /* already stopped */ }
 
     isSpeakingRef.current = true
     setIsSpeaking(true)
 
     try {
-      const res = await fetch('/api/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, voice: buddyVoice || 'nova' }),
-      })
-      if (!res.ok) throw new Error(`TTS ${res.status}`)
+      const sentences = splitSentences(text)
+      // Fire all TTS requests immediately in parallel
+      const bufferPromises = sentences.map(s => fetchTTSBuffer(s))
 
-      const arrayBuffer = await res.arrayBuffer()
-
-      if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
-        audioCtxRef.current = new AudioContext()
+      for (const promise of bufferPromises) {
+        if (!isSpeakingRef.current || speakGenRef.current !== myGen) break
+        const buf = await promise
+        if (!buf || !isSpeakingRef.current || speakGenRef.current !== myGen) break
+        await playBuffer(buf)
       }
-      if (audioCtxRef.current.state === 'suspended') {
-        await audioCtxRef.current.resume()
-      }
-
-      const audioBuffer = await audioCtxRef.current.decodeAudioData(arrayBuffer)
-      const source = audioCtxRef.current.createBufferSource()
-      source.buffer = audioBuffer
-      source.connect(audioCtxRef.current.destination)
-      audioSourceRef.current = source
-
-      source.onended = () => {
+    } finally {
+      // Only the most-recent call clears the speaking flag
+      if (speakGenRef.current === myGen) {
         isSpeakingRef.current = false
         setIsSpeaking(false)
       }
-
-      source.start()
-    } catch (e) {
-      console.error('[tts] failed:', e)
-      isSpeakingRef.current = false
-      setIsSpeaking(false)
     }
-  }
+  }, [fetchTTSBuffer, playBuffer])
 
   const surfaceSilentSummary = () => {
     const log = silentLogRef.current
@@ -110,7 +152,7 @@ export default function BuddyChat({ buddyName, buddyVoice }: { buddyName: string
       void sendMessage(text)
     },
     onSpeechStart: () => {
-      // Immediate TTS stop on first sound — feels responsive
+      // Immediate TTS stop when Silero VAD detects real speech — not noise/keyboard
       if (isSpeakingRef.current) {
         try { audioSourceRef.current?.stop() } catch { /* already stopped */ }
         isSpeakingRef.current = false
@@ -118,8 +160,6 @@ export default function BuddyChat({ buddyName, buddyVoice }: { buddyName: string
       }
     },
     shouldSuppress: () => isSpeakingRef.current,
-    silenceDurationMs: 1200,
-    silenceThresholdDb: -35,  // raised: ambient noise (~-40dB) must be below this to count as silence
   })
 
   const toggleSilentMode = () => {
