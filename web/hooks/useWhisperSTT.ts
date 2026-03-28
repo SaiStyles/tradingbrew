@@ -31,6 +31,7 @@ export function useWhisperSTT({
   const mimeTypeRef = useRef<string>('')
   const isListeningRef = useRef(false)
   const hasSpeechRef = useRef(false)
+  const speechStartTimeRef = useRef<number | null>(null)
 
   const sendChunkToWhisper = useCallback(async (chunks: Blob[], mimeType: string) => {
     if (chunks.length === 0) return
@@ -85,6 +86,7 @@ export function useWhisperSTT({
 
     chunksRef.current = []
     hasSpeechRef.current = false
+    speechStartTimeRef.current = null
 
     recorder.ondataavailable = (e) => {
       if (e.data.size > 0) chunksRef.current.push(e.data)
@@ -129,12 +131,22 @@ export function useWhisperSTT({
         onSpeechDetected: () => {
           setSoundDetected(true)
           hasSpeechRef.current = true
+          speechStartTimeRef.current = Date.now()
           onSpeechStart?.()
         },
         onSilenceDetected: () => {
           setSoundDetected(false)
-          if (hasSpeechRef.current) {
+          const speechDuration = speechStartTimeRef.current
+            ? Date.now() - speechStartTimeRef.current
+            : 0
+          speechStartTimeRef.current = null
+          console.log('[stt] speech duration:', speechDuration, 'ms')
+          // Minimum 400ms of speech — filters keyboard clicks, brief noise spikes
+          if (hasSpeechRef.current && speechDuration >= 400) {
             stopCurrentRecorder()
+          } else {
+            // Too short — reset without sending
+            hasSpeechRef.current = false
           }
         },
       })
