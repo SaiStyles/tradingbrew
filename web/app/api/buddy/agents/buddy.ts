@@ -1,27 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
-import type {
-  ExtractedData,
-  ContextPacket,
-  AnalystReport,
-  ChatMessage,
-} from '@/types/trade'
+import type { BuddyParams } from '@/types/trade'
 import { withRetry } from '@/lib/claude/retry'
-
-interface BuddyParams {
-  message: string
-  extracted: ExtractedData
-  context: ContextPacket
-  analysis: AnalystReport | null
-  messages: ChatMessage[]
-  tradingDate: string
-  traderPortrait: string
-  user: {
-    buddy_name: string
-    buddy_personality: string
-    trading_timezone: string
-  }
-  model?: string
-}
 
 export async function runBuddy(params: BuddyParams): Promise<string> {
   try {

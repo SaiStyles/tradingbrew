@@ -150,6 +150,8 @@ export async function POST(request: NextRequest) {
     console.log('[agents] extractor + context + portrait:', Date.now() - t0, 'ms', traderPortrait ? '(portrait ready)' : '(no portrait yet)')
 
     // Step 2.5: Query Agent — runs only for historical analysis questions
+    // enrichedContext is immutable — never mutate the original context object
+    let enrichedContext = context
     if (extracted.query_type === 'historical_analysis' && extracted.query_subtype !== 'psychology') {
       try {
         const queryResult = await runQueryAnalyst({
@@ -172,25 +174,14 @@ export async function POST(request: NextRequest) {
             })
             if (retryResult.needs_sql && retryResult.sql) {
               const retryExec = await runAnalyticsQuery(user.id, retryResult.sql)
-              context.historicalQuery = {
-                query_description: retryResult.query_description,
-                results: retryExec.results,
-                error: retryExec.error,
-              }
+              enrichedContext = { ...context, historicalQuery: { query_description: retryResult.query_description, results: retryExec.results, error: retryExec.error } }
             }
           } else {
-            context.historicalQuery = {
-              query_description: queryResult.query_description,
-              results,
-              error,
-            }
+            enrichedContext = { ...context, historicalQuery: { query_description: queryResult.query_description, results, error } }
           }
         } else {
           // Psychology-only — no SQL, but mark it so Buddy knows to use memories
-          context.historicalQuery = {
-            query_description: queryResult.query_description,
-            results: [],
-          }
+          enrichedContext = { ...context, historicalQuery: { query_description: queryResult.query_description, results: [] } }
         }
       } catch (e) {
         console.error('[query-agent] failed:', e)
@@ -210,7 +201,7 @@ export async function POST(request: NextRequest) {
       runBuddy({
         message,
         extracted,
-        context,
+        context: enrichedContext,
         analysis: session.last_analysis ?? null,
         messages: session.messages,
         tradingDate,
@@ -223,7 +214,7 @@ export async function POST(request: NextRequest) {
         model: useHaiku ? 'claude-haiku-4-5-20251001' : 'claude-sonnet-4-6',
       }),
       shouldRunAnalyst
-        ? runAnalyst(extracted, context).catch(() => null)
+        ? runAnalyst(extracted, enrichedContext).catch(() => null)
         : Promise.resolve(null),
       (extracted.has_trade || session.messages.length > 0)
         ? runSaveDetector({ messages: conversationSoFar, extracted, tradingDate, tradingTimezone })
@@ -281,7 +272,7 @@ export async function POST(request: NextRequest) {
           message,
           buddyReply,
           extracted,
-          context,
+          context: enrichedContext,
           recentMessages: session.messages.slice(-8),
           existingMemories: [...context.memories, ...todayObservations],
           tradingTimezone,

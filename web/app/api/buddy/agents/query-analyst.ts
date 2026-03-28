@@ -1,19 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { parseJSON } from '@/lib/claude/parser'
+import type { QueryAnalystParams, QueryAnalystOutput } from '@/types/trade'
+import { QueryAnalystOutputSchema } from '@/types/trade'
+import { parseWithSchema } from '@/lib/claude/parser'
 import { withRetry } from '@/lib/claude/retry'
-
-interface QueryAnalystParams {
-  question: string
-  querySubtype: 'data' | 'psychology' | 'both' | null
-  tradingTimezone: string
-  currentDate: string
-}
-
-interface QueryAnalystOutput {
-  sql: string | null
-  query_description: string
-  needs_sql: boolean
-}
 
 const SCHEMA = `
 QUERYABLE TABLES:
@@ -102,7 +91,7 @@ If the question is purely about psychology/emotions/feelings with no numerical c
     }))
 
     const raw = result.content[0].type === 'text' ? '{' + result.content[0].text : ''
-    const parsed = parseJSON<QueryAnalystOutput>(raw)
+    const parsed = parseWithSchema(raw, QueryAnalystOutputSchema)
     if (!parsed) return { sql: null, query_description: question, needs_sql: false }
     return parsed
   } catch (e) {

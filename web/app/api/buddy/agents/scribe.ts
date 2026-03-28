@@ -1,21 +1,12 @@
 import Anthropic from '@anthropic-ai/sdk'
-import type { ExtractedData, ContextPacket, ChatMessage, ScribeOutput } from '@/types/trade'
-import { parseJSON } from '@/lib/claude/parser'
+import type { ExtractedData, ContextPacket, ChatMessage, ScribeOutput, ScribeParams } from '@/types/trade'
+import { ScribeOutputSchema } from '@/types/trade'
+import { parseWithSchema } from '@/lib/claude/parser'
 import { withRetry } from '@/lib/claude/retry'
 
 const EMPTY: ScribeOutput = {
   should_write: false,
   memories: [],
-}
-
-interface ScribeParams {
-  message: string
-  buddyReply: string
-  extracted: ExtractedData | null
-  context: ContextPacket
-  recentMessages: ChatMessage[]
-  existingMemories: string[]
-  tradingTimezone: string
 }
 
 export async function runScribe(params: ScribeParams): Promise<ScribeOutput> {
@@ -114,7 +105,7 @@ If something worth writing: {"should_write":true,"memories":["precise observatio
     }))
 
     const raw = result.content[0].type === 'text' ? '{' + result.content[0].text : ''
-    const parsed = parseJSON<ScribeOutput>(raw)
+    const parsed = parseWithSchema(raw, ScribeOutputSchema)
     if (!parsed) return { ...EMPTY }
     return parsed
   } catch (e) {

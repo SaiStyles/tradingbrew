@@ -1,15 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk'
-import type { ChatMessage, ExtractedData, BuddyResponse } from '@/types/trade'
+import type { ChatMessage, ExtractedData, BuddyResponse, SaveDetectorParams } from '@/types/trade'
+import { SaveDetectorOutputSchema } from '@/types/trade'
 import { getISOOffset } from '../timezone'
-import { parseJSON } from '@/lib/claude/parser'
+import { parseWithSchema } from '@/lib/claude/parser'
 import { withRetry } from '@/lib/claude/retry'
-
-interface SaveDetectorParams {
-  messages: ChatMessage[]
-  extracted: ExtractedData
-  tradingDate: string
-  tradingTimezone: string
-}
 
 export async function runSaveDetector(params: SaveDetectorParams): Promise<BuddyResponse> {
   const { messages, extracted, tradingDate, tradingTimezone } = params
@@ -89,7 +83,7 @@ trade_data is null when save_trade is false.`
     }))
 
     const raw = result.content[0].type === 'text' ? '{' + result.content[0].text : ''
-    const parsed = parseJSON<BuddyResponse>(raw)
+    const parsed = parseWithSchema(raw, SaveDetectorOutputSchema)
     if (!parsed) return fallback
     return { ...parsed, reply: '' }
   } catch (e) {

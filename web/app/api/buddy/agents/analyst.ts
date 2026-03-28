@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { ExtractedData, ContextPacket, AnalystReport } from '@/types/trade'
-import { parseAnalystOutput } from '@/lib/claude/parser'
+import { AnalystReportSchema } from '@/types/trade'
+import { parseWithSchema } from '@/lib/claude/parser'
 import { withRetry } from '@/lib/claude/retry'
 
 const EMPTY: AnalystReport = {
@@ -100,8 +101,9 @@ ${memories}`
     // Prepend '{' because we prefilled the assistant turn with '{' — Claude's response starts after it
     const raw = result.content[0].type === 'text' ? '{' + result.content[0].text : ''
     console.log('[analyst] raw output:', raw.slice(0, 500))
-    const parsed = parseAnalystOutput(raw)
-    console.log('[analyst] parsed violations:', JSON.stringify(parsed?.violations))
+    const parsed = parseWithSchema(raw, AnalystReportSchema)
+    if (!parsed) return { ...EMPTY }
+    console.log('[analyst] parsed violations:', JSON.stringify(parsed.violations))
     return parsed
   } catch (e) {
     console.error('[analyst] failed:', e)

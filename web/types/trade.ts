@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 export type TradeDirection = 'long' | 'short'
 
 export interface ChatMessage {
@@ -161,3 +163,115 @@ export interface DailyAiNote {
   note: string
   generated_at: string
 }
+
+// ─────────────────────────────────────────────────────────────────
+// Agent params — single source of truth for every agent's input
+// ─────────────────────────────────────────────────────────────────
+
+export interface BuddyParams {
+  message: string
+  extracted: ExtractedData
+  context: ContextPacket
+  analysis: AnalystReport | null
+  messages: ChatMessage[]
+  tradingDate: string
+  traderPortrait: string
+  user: {
+    buddy_name: string
+    buddy_personality: string
+    trading_timezone: string
+  }
+  model?: string
+}
+
+export interface SaveDetectorParams {
+  messages: ChatMessage[]
+  extracted: ExtractedData
+  tradingDate: string
+  tradingTimezone: string
+}
+
+export interface ScribeParams {
+  message: string
+  buddyReply: string
+  extracted: ExtractedData | null
+  context: ContextPacket
+  recentMessages: ChatMessage[]
+  existingMemories: string[]
+  tradingTimezone: string
+}
+
+export interface QueryAnalystParams {
+  question: string
+  querySubtype: 'data' | 'psychology' | 'both' | null
+  tradingTimezone: string
+  currentDate: string
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Zod schemas — runtime validation for Claude agent outputs
+// If Claude returns bad JSON, error surfaces at the agent boundary
+// not 3 agents downstream where it's impossible to debug
+// ─────────────────────────────────────────────────────────────────
+
+export const ExtractedDataSchema = z.object({
+  instrument: z.string().nullable(),
+  direction: z.enum(['long', 'short']).nullable(),
+  pnl: z.number().nullable(),
+  opened_at: z.string().nullable(),
+  closed_at: z.string().nullable(),
+  position_size: z.number().nullable(),
+  emotion: z.string().nullable(),
+  execution_score: z.number().nullable(),
+  followed_plan: z.boolean().nullable(),
+  confirmed: z.boolean(),
+  declined: z.boolean(),
+  has_trade: z.boolean(),
+  query_type: z.literal('historical_analysis').nullable(),
+  query_subtype: z.enum(['data', 'psychology', 'both']).nullable(),
+})
+
+export const RuleViolationFindingSchema = z.object({
+  rule_id: z.string(),
+  severity: z.enum(['warning', 'violation']),
+  reasoning: z.string(),
+})
+
+export const AnalystReportSchema = z.object({
+  violations: z.array(RuleViolationFindingSchema).default([]),
+  warnings: z.array(z.string()).default([]),
+  patterns: z.array(z.string()).default([]),
+  positives: z.array(z.string()).default([]),
+  intervention_needed: z.boolean().default(false),
+  intervention_type: z.string().nullable().default(null),
+})
+
+export const ScribeOutputSchema = z.object({
+  should_write: z.boolean(),
+  memories: z.array(z.string()).default([]),
+})
+
+export const QueryAnalystOutputSchema = z.object({
+  sql: z.string().nullable(),
+  query_description: z.string(),
+  needs_sql: z.boolean(),
+})
+
+export type QueryAnalystOutput = z.infer<typeof QueryAnalystOutputSchema>
+
+export const SaveDetectorOutputSchema = z.object({
+  save_trade: z.boolean(),
+  trade_data: z.object({
+    instrument: z.string().nullable().optional(),
+    direction: z.enum(['long', 'short']).nullable().optional(),
+    pnl: z.number().nullable().optional(),
+    opened_at: z.string().nullable().optional(),
+    closed_at: z.string().nullable().optional(),
+    position_size: z.number().nullable().optional(),
+    emotion_tag: z.string().nullable().optional(),
+    execution_score: z.number().nullable().optional(),
+    notes: z.string().nullable().optional(),
+    followed_plan: z.boolean().nullable().optional(),
+  }).nullable(),
+  reply: z.string().default(''),
+})

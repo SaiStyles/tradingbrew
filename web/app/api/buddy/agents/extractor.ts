@@ -1,7 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { ExtractedData } from '@/types/trade'
+import { ExtractedDataSchema } from '@/types/trade'
 import { getISOOffset, getTodayInTz } from '../timezone'
-import { parseJSON } from '@/lib/claude/parser'
+import { parseWithSchema } from '@/lib/claude/parser'
 import { withRetry } from '@/lib/claude/retry'
 
 const FAILED: ExtractedData = {
@@ -65,7 +66,7 @@ Field rules:
     }))
 
     const raw = result.content[0].type === 'text' ? '{' + result.content[0].text : ''
-    const parsed = parseJSON<ExtractedData>(raw)
+    const parsed = parseWithSchema(raw, ExtractedDataSchema)
     if (!parsed) return { ...FAILED }
     return parsed
   } catch (e) {
