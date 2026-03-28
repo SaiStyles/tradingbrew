@@ -13,7 +13,7 @@ type SilentLogEntry = {
   trade_data: { instrument?: string; pnl?: number } | null
 }
 
-export default function BuddyChat({ buddyName }: { buddyName: string }) {
+export default function BuddyChat({ buddyName, buddyVoice }: { buddyName: string; buddyVoice?: string }) {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'buddy',
@@ -36,69 +36,62 @@ export default function BuddyChat({ buddyName }: { buddyName: string }) {
   const isSpeakingRef = useRef(false)
   const silentModeRef = useRef(false)
   const silentLogRef = useRef<SilentLogEntry[]>([])
+  const audioCtxRef = useRef<AudioContext | null>(null)
+  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Chrome bug: speechSynthesis pauses itself after page inactivity — force resume periodically
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (typeof window !== 'undefined' && window.speechSynthesis?.paused) {
-        window.speechSynthesis.resume()
+  const speak = async (text: string) => {
+    // Stop any currently playing audio
+    try { audioSourceRef.current?.stop() } catch { /* already stopped */ }
+
+    isSpeakingRef.current = true
+    setIsSpeaking(true)
+
+    try {
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, voice: buddyVoice || 'nova' }),
+      })
+      if (!res.ok) throw new Error(`TTS ${res.status}`)
+
+      const arrayBuffer = await res.arrayBuffer()
+
+      // Lazily create/reuse AudioContext
+      if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+        audioCtxRef.current = new AudioContext()
       }
-    }, 5000)
-    return () => clearInterval(interval)
-  }, [])
-
-  const speak = (text: string) => {
-    if (!('speechSynthesis' in window)) return
-
-    // Chrome bug: cancel() + immediate speak() silently fails — small delay required
-    window.speechSynthesis.cancel()
-
-    setTimeout(() => {
-      const utterance = new SpeechSynthesisUtterance(text)
-      utterance.rate = 1.0
-      utterance.pitch = 1.0
-      utterance.volume = 1.0
-
-      // Safety timeout: if onend never fires (Chrome stuck state), force reset after 30s
-      const safetyTimer = setTimeout(() => {
-        if (isSpeakingRef.current) {
-          console.warn('[voice] speechSynthesis onend never fired — forcing reset')
-          isSpeakingRef.current = false
-          setIsSpeaking(false)
-          if (isListeningRef.current) {
-            startRecognition()
-          }
-        }
-      }, 30000)
-
-      utterance.onstart = () => {
-        isSpeakingRef.current = true
-        setIsSpeaking(true)
+      if (audioCtxRef.current.state === 'suspended') {
+        await audioCtxRef.current.resume()
       }
-      utterance.onend = () => {
-        clearTimeout(safetyTimer)
+
+      const audioBuffer = await audioCtxRef.current.decodeAudioData(arrayBuffer)
+      const source = audioCtxRef.current.createBufferSource()
+      source.buffer = audioBuffer
+      source.connect(audioCtxRef.current.destination)
+      audioSourceRef.current = source
+
+      source.onended = () => {
         isSpeakingRef.current = false
         setIsSpeaking(false)
         if (isListeningRef.current) {
           setTimeout(() => {
-            if (isListeningRef.current) {
-              startRecognition()
-            }
+            if (isListeningRef.current) startRecognition()
           }, 300)
         }
       }
-      utterance.onerror = () => {
-        clearTimeout(safetyTimer)
-        isSpeakingRef.current = false
-        setIsSpeaking(false)
-      }
 
-      window.speechSynthesis.speak(utterance)
-    }, 100)
+      source.start()
+    } catch (e) {
+      console.error('[tts] failed:', e)
+      isSpeakingRef.current = false
+      setIsSpeaking(false)
+      // Restart recognition so mic doesn't go silent on TTS error
+      if (isListeningRef.current) startRecognition()
+    }
   }
 
   const surfaceSilentSummary = () => {

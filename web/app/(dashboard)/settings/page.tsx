@@ -10,7 +10,7 @@ export default async function SettingsPage() {
   const { data: profile } = await supabase
     .from('users')
     .select(
-      'trading_timezone, buddy_name, buddy_personality, notif_morning, notif_news, notif_violations, notif_debrief'
+      'trading_timezone, buddy_name, buddy_personality, buddy_voice_id, notif_morning, notif_news, notif_violations, notif_debrief'
     )
     .eq('id', user.id)
     .single()
@@ -26,6 +26,7 @@ export default async function SettingsPage() {
     trading_timezone: profile?.trading_timezone ?? null,
     buddy_name: profile?.buddy_name ?? null,
     buddy_personality: profile?.buddy_personality ?? null,
+    buddy_voice_id: profile?.buddy_voice_id ?? null,
     notif_morning: profile?.notif_morning ?? null,
     notif_news: profile?.notif_news ?? null,
     notif_violations: profile?.notif_violations ?? null,

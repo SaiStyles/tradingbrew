@@ -10,7 +10,7 @@ export async function GET() {
     const { data: profile, error: profileError } = await supabase
       .from('users')
       .select(
-        'trading_timezone, buddy_name, buddy_personality, notif_morning, notif_news, notif_violations, notif_debrief'
+        'trading_timezone, buddy_name, buddy_personality, buddy_voice_id, notif_morning, notif_news, notif_violations, notif_debrief'
       )
       .eq('id', user.id)
       .single()
@@ -47,7 +47,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const input = body as Record<string, unknown>
-    const allowed = ['trading_timezone', 'buddy_name', 'buddy_personality', 'notif_morning', 'notif_news', 'notif_violations', 'notif_debrief']
+    const allowed = ['trading_timezone', 'buddy_name', 'buddy_personality', 'buddy_voice_id', 'notif_morning', 'notif_news', 'notif_violations', 'notif_debrief']
     const update: Record<string, unknown> = {}
     for (const key of allowed) {
       if (key in input) update[key] = input[key]

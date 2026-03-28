@@ -7,7 +7,7 @@ export default async function DashboardPage() {
 
   const { data: profile } = await supabase
     .from('users')
-    .select('*')
+    .select('name, buddy_name, buddy_voice_id')
     .eq('id', user?.id)
     .single()
 
@@ -52,7 +52,7 @@ export default async function DashboardPage() {
 
       {/* Buddy Chat — takes remaining space */}
       <div className="flex-1 min-h-0">
-        <BuddyChat buddyName={profile?.buddy_name || 'Brew'} />
+        <BuddyChat buddyName={profile?.buddy_name || 'Brew'} buddyVoice={profile?.buddy_voice_id ?? undefined} />
       </div>
     </div>
   )
