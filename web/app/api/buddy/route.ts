@@ -190,7 +190,7 @@ export async function POST(request: NextRequest) {
 
     // Step 3+4+5: Buddy + Analyst + SaveDetector — all in parallel
     const shouldRunAnalyst = extracted.has_trade || session.messages.length > 0
-    const useHaiku = !session.last_analysis?.intervention_needed
+    const useHaiku = true // always Haiku — Sonnet escalation removed
     const conversationSoFar: ChatMessage[] = [
       ...session.messages,
       { role: 'user' as const, content: message },
