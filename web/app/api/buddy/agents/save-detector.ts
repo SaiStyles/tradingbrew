@@ -35,6 +35,7 @@ These fields are optional but include if mentioned:
 - closed_at (exit time)
 - position_size
 - followed_plan
+- rr (risk/reward ratio — any format the trader stated, e.g. "1:2", "2R", "1 to 3")
 
 MULTIPLE TRADES RULE:
 If the conversation contains multiple trades, save only the most recently discussed trade — the one Buddy is currently collecting fields for. The current trade is the first trade AFTER the most recent [SYSTEM: Trade already saved] marker. Never mix fields from two different trades.
@@ -64,7 +65,7 @@ Return ONLY valid JSON:
 {"save_trade":false,"trade_data":null,"reply":""}
 
 If save_trade is true:
-{"save_trade":true,"trade_data":{"instrument":null,"direction":null,"pnl":null,"opened_at":null,"closed_at":null,"position_size":null,"emotion_tag":null,"execution_score":null,"followed_plan":null},"reply":""}
+{"save_trade":true,"trade_data":{"instrument":null,"direction":null,"pnl":null,"opened_at":null,"closed_at":null,"position_size":null,"emotion_tag":null,"execution_score":null,"rr":null,"followed_plan":null},"reply":""}
 
 reply is always empty string.
 trade_data is null when save_trade is false.`

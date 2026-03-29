@@ -25,6 +25,7 @@ const emptyExtracted: ExtractedData = {
   instrument: null, direction: null, pnl: null,
   opened_at: null, closed_at: null, position_size: null,
   emotion: null, execution_score: null, followed_plan: null,
+  market_condition: null,
   confirmed: false, declined: false, has_trade: false,
   query_type: null, query_subtype: null,
 }
@@ -74,7 +75,8 @@ describe('Scenario 2: Depressed trader skips execution score', () => {
     console.log('[scenario2] save_trade:', save.save_trade, '| execution_score:', save.trade_data?.execution_score)
     // Should save without execution_score (it's now optional)
     expect(save.save_trade).toBe(true)
-    expect(save.trade_data?.execution_score).toBeNull()
+    // save-detector strips null fields — execution_score absent means it was not provided
+    expect(save.trade_data?.execution_score).toBeUndefined()
   }, 30000)
 })
 

@@ -17,6 +17,7 @@ export interface ExtractedData {
   emotion: string | null
   execution_score: number | null
   followed_plan: boolean | null
+  market_condition: string | null
   confirmed: boolean
   declined: boolean
   has_trade: boolean
@@ -138,6 +139,8 @@ export interface TradeRecord {
   duration_mins: number | null
   emotion_tag: EmotionTag | null
   execution_score: number | null
+  rr: string | null
+  market_condition: string | null
   notes: string | null
   voice_note_url: string | null
   followed_plan: boolean | null
@@ -228,6 +231,7 @@ export const ExtractedDataSchema = z.object({
   emotion: z.string().nullable(),
   execution_score: z.number().nullable(),
   followed_plan: z.boolean().nullable(),
+  market_condition: z.string().nullable(),
   confirmed: z.boolean(),
   declined: z.boolean(),
   has_trade: z.boolean(),
@@ -274,6 +278,7 @@ export const SaveDetectorOutputSchema = z.object({
     position_size: z.number().nullable().optional(),
     emotion_tag: z.string().nullable().optional(),
     execution_score: z.number().nullable().optional(),
+    rr: z.string().nullable().optional(),
     notes: z.string().nullable().optional(),
     followed_plan: z.boolean().nullable().optional(),
   }).nullable(),

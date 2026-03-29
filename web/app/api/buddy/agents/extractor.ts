@@ -10,7 +10,7 @@ const FAILED: ExtractedData = {
   opened_at: null, closed_at: null,
   position_size: null,
   emotion: null, execution_score: null,
-  followed_plan: null,
+  followed_plan: null, market_condition: null,
   confirmed: false, declined: false, has_trade: false,
   query_type: null, query_subtype: null,
 }
@@ -45,7 +45,7 @@ When extracting times:
 - If AM/PM not stated, infer from context (9:30 = 09:30 AM for US markets).
 
 Return this exact JSON structure:
-{"instrument":null,"direction":null,"pnl":null,"opened_at":null,"closed_at":null,"position_size":null,"emotion":null,"execution_score":null,"followed_plan":null,"confirmed":false,"declined":false,"has_trade":false,"query_type":null,"query_subtype":null}
+{"instrument":null,"direction":null,"pnl":null,"opened_at":null,"closed_at":null,"position_size":null,"emotion":null,"execution_score":null,"followed_plan":null,"market_condition":null,"confirmed":false,"declined":false,"has_trade":false,"query_type":null,"query_subtype":null}
 
 Field rules:
 - instrument: ticker symbol only (NQ, ES, AAPL, etc.)
@@ -57,8 +57,9 @@ Field rules:
 - confirmed: true if user is agreeing/confirming in any natural way
 - declined: true if user is disagreeing, skipping, or saying no
 - has_trade: true only if the message clearly describes a trade the user has already taken or is actively reporting — requires at minimum an instrument or a pnl or a direction. "I'm thinking about trading NQ" = false. "I took a NQ long" = true. "made $400 today" = true.
-- query_type: "historical_analysis" if the user is asking a question about their past trading history, patterns, or performance (e.g. "how do I do on Mondays", "what's my win rate on NQ", "when did I last tilt", "how was last week"). null for everything else.
-- query_subtype: when query_type is "historical_analysis" — "data" if they explicitly want stats/numbers only, "psychology" ONLY for open-ended pattern questions with no date reference (e.g. "what's my biggest weakness", "am I a revenge trader"). If the question references a specific date/day/period AND psychology, use "both" — those need SQL too. null when query_type is null. When in doubt: "both".`,
+- query_type: "historical_analysis" if the user (1) asks any question about past trading history, patterns, or performance ("how do I do on Mondays", "what's my win rate on NQ", "when did I last tilt", "how was last week"), OR (2) makes an implicit observation about a pattern that could be validated with data ("I feel worse on Mondays", "I've been revenge trading a lot lately", "NQ always kills me", "been struggling this week", "I keep losing on Fridays", "my mornings are terrible"), OR (3) expresses concern about a recurring issue without asking a direct question. null for everything else — reporting a new trade, casual chat, market commentary, single-event statements.
+- query_subtype: when query_type is "historical_analysis" — "data" if they explicitly want stats/numbers only, "psychology" ONLY for open-ended pattern questions with no date reference and no specific instrument/day/period (e.g. "what's my biggest weakness", "am I a revenge trader"). If the question or observation references a specific date/day/period/instrument OR combines psychology with a time anchor → "both". null when query_type is null. When in doubt: "both".
+- market_condition: infer silently from how the trader describes the price action. "trending" when they describe a clean directional move, breakout, momentum. "choppy" when they describe whipsaw, noise, getting stopped out both ways, no clean move. "news-driven" when they mention a specific event (CPI, FOMC, NFP, earnings) driving the move. "range" when they describe price bouncing between levels, consolidation, range-bound. null if no price action description in the message.`,
       messages: [
         { role: 'user', content: message },
         { role: 'assistant', content: '{' },

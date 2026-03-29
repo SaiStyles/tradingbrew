@@ -120,8 +120,8 @@ export async function POST(request: NextRequest) {
       opened_at: null, closed_at: null,
       position_size: null,
       emotion: null, execution_score: null,
-      followed_plan: null, confirmed: false,
-      declined: false, has_trade: false,
+      followed_plan: null, market_condition: null,
+      confirmed: false, declined: false, has_trade: false,
       query_type: null, query_subtype: null,
     }
 
@@ -333,6 +333,8 @@ export async function POST(request: NextRequest) {
             closed_at: closedAt,
             emotion_tag: td.emotion_tag ?? null,
             execution_score: td.execution_score ?? null,
+            rr: td.rr ?? null,
+            market_condition: extracted.market_condition ?? null,
             notes: null,
             followed_plan: td.followed_plan ?? null,
             incomplete,

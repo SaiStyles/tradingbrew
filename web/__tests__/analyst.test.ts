@@ -7,8 +7,8 @@ const emptyExtracted: ExtractedData = {
   opened_at: null, closed_at: null,
   position_size: null,
   emotion: null, execution_score: null,
-  followed_plan: null, confirmed: false,
-  declined: false, has_trade: false,
+  followed_plan: null, market_condition: null,
+  confirmed: false, declined: false, has_trade: false,
   query_type: null, query_subtype: null,
 }
 
@@ -48,6 +48,8 @@ function makeTrade(overrides: Partial<TradeRecord>): TradeRecord {
     duration_mins: null,
     emotion_tag: null,
     execution_score: null,
+    rr: null,
+    market_condition: null,
     notes: null,
     voice_note_url: null,
     followed_plan: null,

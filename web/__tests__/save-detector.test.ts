@@ -10,8 +10,8 @@ const emptyExtracted: ExtractedData = {
   opened_at: null, closed_at: null,
   position_size: null,
   emotion: null, execution_score: null,
-  followed_plan: null, confirmed: false,
-  declined: false, has_trade: false,
+  followed_plan: null, market_condition: null,
+  confirmed: false, declined: false, has_trade: false,
   query_type: null, query_subtype: null,
 }
 
