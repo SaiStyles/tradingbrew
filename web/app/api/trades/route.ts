@@ -45,6 +45,7 @@ export async function POST(request: NextRequest) {
       exit_price: input.exit_price ?? null,
       stop_loss: input.stop_loss ?? null,
       pnl: input.pnl ?? null,
+      rr: input.rr ?? null,
       position_size: input.position_size ?? null,
       opened_at: input.opened_at ?? null,
       closed_at: input.closed_at ?? null,

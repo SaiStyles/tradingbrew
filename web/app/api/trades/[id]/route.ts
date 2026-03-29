@@ -65,6 +65,7 @@ export async function PATCH(
       'exit_price',
       'stop_loss',
       'pnl',
+      'rr',
       'position_size',
       'opened_at',
       'closed_at',
