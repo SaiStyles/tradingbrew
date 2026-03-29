@@ -124,18 +124,22 @@ export interface BuddyResponse {
 export interface TradeRecord {
   id: string
   user_id: string
+  session_id: string | null
   instrument: string
   direction: TradeDirection | null
   entry_price: number | null
   exit_price: number | null
   stop_loss: number | null
+  take_profit: number | null
   pnl: number | null
   position_size: number | null
   opened_at: string | null
   closed_at: string | null
+  duration_mins: number | null
   emotion_tag: EmotionTag | null
   execution_score: number | null
   notes: string | null
+  voice_note_url: string | null
   followed_plan: boolean | null
   incomplete: boolean
   deleted_at: string | null

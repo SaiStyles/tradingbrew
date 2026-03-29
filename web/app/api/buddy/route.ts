@@ -305,7 +305,9 @@ export async function POST(request: NextRequest) {
     ].slice(-20)
 
     // Step 8: Save trade if SaveDetector decided to
+    const saveDetectorFired = extracted.has_trade || session.messages.length > 0
     let savedTrade = null
+    let tradeInsertError: string | null = null
     if (saveResult.save_trade && saveResult.trade_data) {
       const td = saveResult.trade_data
       if (td.execution_score != null) {
@@ -316,32 +318,31 @@ export async function POST(request: NextRequest) {
       try {
         const closedAt = td.closed_at ?? nowInTz(tradingTimezone)
         const incomplete = !td.opened_at || !td.direction
+        const currentSessionId = sessionResult.data?.id ?? null
 
         const { data: insertedTrade, error: insertError } = await supabase
           .from('trades')
           .insert({
             user_id: user.id,
+            session_id: currentSessionId,
             instrument: td.instrument ?? '',
             direction: td.direction ?? null,
-            entry_price: null,
-            exit_price: null,
-            stop_loss: null,
             pnl: td.pnl ?? null,
             position_size: td.position_size ?? null,
             opened_at: td.opened_at ?? null,
             closed_at: closedAt,
             emotion_tag: td.emotion_tag ?? null,
             execution_score: td.execution_score ?? null,
-            notes: td.notes ?? null,
+            notes: null,
             followed_plan: td.followed_plan ?? null,
             incomplete,
-            deleted_at: null,
           })
           .select()
           .single()
 
         if (insertError) {
-          console.error('[buddy] trade save error:', insertError)
+          console.error('[buddy] trade save error:', JSON.stringify(insertError))
+          tradeInsertError = insertError.message
         } else {
           console.log('[buddy] trade saved:', insertedTrade?.id)
           savedTrade = insertedTrade
@@ -350,11 +351,10 @@ export async function POST(request: NextRequest) {
             role: 'user' as const,
             content: `[SYSTEM: Trade already saved — ${td.instrument} ${td.direction} $${td.pnl} at ${td.opened_at}. Do not save this trade again under any circumstances.]`,
           })
-
-          // Memory is handled by Scribe (fires after every Buddy response)
         }
       } catch (e) {
         console.error('[buddy] trade save exception:', e)
+        tradeInsertError = e instanceof Error ? e.message : 'unknown exception'
       }
     }
 
@@ -409,6 +409,15 @@ export async function POST(request: NextRequest) {
       reply: buddyReply,
       action: saveResult.save_trade ? 'save_trade' : null,
       trade_data: savedTrade,
+      _debug: {
+        save_detector_fired: saveDetectorFired,
+        save_trade: saveResult.save_trade,
+        session_messages_count: session.messages.length,
+        has_trade: extracted.has_trade,
+        trade_fields_found: saveResult.trade_data ? Object.keys(saveResult.trade_data) : null,
+        ...(tradeInsertError ? { insert_error: tradeInsertError } : {}),
+        ...(savedTrade ? { saved_trade_id: (savedTrade as { id?: string }).id } : {}),
+      },
     })
 
   } catch (error: unknown) {
