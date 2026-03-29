@@ -35,7 +35,7 @@ These fields are optional but include if mentioned:
 - closed_at (exit time)
 - position_size
 - followed_plan
-- rr (risk/reward ratio — any format the trader stated, e.g. "1:2", "2R", "1 to 3")
+- rr (risk/reward — if Buddy asked about R or risk/reward and trader replied with any ratio or R-multiple, capture it exactly as stated. Examples: "1:2" → "1:2", "it was a 2R trade" → "2R", "one to three" → "1:3". Short replies like "1:2" or "2R" right after a risk/reward question = this field.)
 
 MULTIPLE TRADES RULE:
 If the conversation contains multiple trades, save only the most recently discussed trade — the one Buddy is currently collecting fields for. The current trade is the first trade AFTER the most recent [SYSTEM: Trade already saved] marker. Never mix fields from two different trades.
