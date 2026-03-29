@@ -82,6 +82,16 @@ function TradeCard({ trade, onClick, tradingTimezone }: { trade: TradeRecord; on
             {trade.emotion_tag}
           </span>
         )}
+        {trade.rr && (
+          <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
+            {trade.rr}
+          </span>
+        )}
+        {trade.market_condition && (
+          <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-500 border border-zinc-700">
+            {trade.market_condition}
+          </span>
+        )}
         {trade.execution_score !== null && (
           <span className="text-xs text-zinc-500">
             {trade.execution_score}/10

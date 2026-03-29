@@ -17,6 +17,7 @@ type FormState = {
   exit_price: string
   stop_loss: string
   pnl: string
+  rr: string
   position_size: string
   opened_at: string
   closed_at: string
@@ -66,6 +67,7 @@ function initForm(trade?: TradeRecord): FormState {
       exit_price: '',
       stop_loss: '',
       pnl: '',
+      rr: '',
       position_size: '',
       opened_at: '',
       closed_at: '',
@@ -82,6 +84,7 @@ function initForm(trade?: TradeRecord): FormState {
     exit_price: trade.exit_price !== null ? String(trade.exit_price) : '',
     stop_loss: trade.stop_loss !== null ? String(trade.stop_loss) : '',
     pnl: trade.pnl !== null ? String(trade.pnl) : '',
+    rr: trade.rr ?? '',
     position_size: trade.position_size !== null ? String(trade.position_size) : '',
     opened_at: toDatetimeLocal(trade.opened_at),
     closed_at: toDatetimeLocal(trade.closed_at),
@@ -164,6 +167,7 @@ export default function TradeDrawer({ isOpen, onClose, onSave, trade }: TradeDra
         exit_price: form.exit_price ? parseFloat(form.exit_price) : null,
         stop_loss: form.stop_loss ? parseFloat(form.stop_loss) : null,
         pnl: form.pnl ? parseFloat(form.pnl) : null,
+        rr: form.rr.trim() || null,
         position_size: form.position_size ? parseFloat(form.position_size) : null,
         opened_at: fromDatetimeLocal(form.opened_at),
         closed_at: fromDatetimeLocal(form.closed_at),
@@ -348,6 +352,20 @@ export default function TradeDrawer({ isOpen, onClose, onSave, trade }: TradeDra
               }`}
             />
             {errors.pnl && <p className="text-red-400 text-xs mt-1">{errors.pnl}</p>}
+          </div>
+
+          {/* R:R */}
+          <div>
+            <label className="block text-xs font-medium text-zinc-400 mb-1.5">
+              Risk/Reward <span className="text-zinc-600 font-normal">(optional — e.g. 1:2, 2R)</span>
+            </label>
+            <input
+              type="text"
+              value={form.rr}
+              onChange={(e) => setField('rr', e.target.value)}
+              placeholder="1:2"
+              className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2.5 text-sm outline-none focus:border-blue-500 transition"
+            />
           </div>
 
           {/* Time inputs */}
