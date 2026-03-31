@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useWhisperSTT } from '@/hooks/useWhisperSTT'
+import { createClient } from '@/lib/supabase/client'
 
 // Split text into sentences so we can fire TTS requests in parallel
 // and start playing sentence 1 while sentence 2 is still being fetched.
@@ -23,15 +24,10 @@ type SilentLogEntry = {
 }
 
 export default function BuddyChat({ buddyName, buddyVoice }: { buddyName: string; buddyVoice?: string }) {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: 'buddy',
-      content: `Hey! I'm ${buddyName}. I'm here with you during your session. How's the market looking today?`,
-      timestamp: new Date()
-    }
-  ])
+  const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [proactiveLoading, setProactiveLoading] = useState(true) // true until session opener resolves
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [silentMode, setSilentMode] = useState(false)
   const [silentCount, setSilentCount] = useState(0)
@@ -122,6 +118,64 @@ export default function BuddyChat({ buddyName, buddyVoice }: { buddyName: string
       }
     }
   }, [fetchTTSBuffer, playBuffer])
+
+  // Session opener: Buddy speaks first on mount — the Jarvis moment
+  // Calls proactive API, which runs ProactiveGate + ProactiveBuddy and returns a personalised greeting.
+  // Falls back to generic greeting if API returns null or errors.
+  useEffect(() => {
+    let cancelled = false
+    const fetchOpener = async () => {
+      try {
+        const res = await fetch('/api/buddy/proactive?trigger=session_start')
+        const data = await res.json() as { message: string | null }
+        if (cancelled) return
+
+        const openerMessage = data.message ?? `Hey! I'm ${buddyName}. Here with you for the session. How's it looking today?`
+        setMessages([{ role: 'buddy', content: openerMessage, timestamp: new Date() }])
+
+        if (data.message) {
+          void speak(data.message)
+        }
+      } catch {
+        if (!cancelled) {
+          setMessages([{ role: 'buddy', content: `Hey! I'm ${buddyName}. Here with you for the session. How's it looking today?`, timestamp: new Date() }])
+        }
+      } finally {
+        if (!cancelled) setProactiveLoading(false)
+      }
+    }
+    void fetchOpener()
+    return () => { cancelled = true }
+  }, [buddyName, speak])
+
+  // Phase 2: Supabase Realtime — receives cron-triggered proactive messages (intervene, debrief, etc.)
+  // Fires when the cron job inserts a row into proactive_queue for this user.
+  // Gracefully no-ops if the table doesn't exist yet (before SQL migration is run).
+  useEffect(() => {
+    const supabase = createClient()
+    const channel = supabase
+      .channel('proactive-push')
+      .on(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        'postgres_changes' as any,
+        { event: 'INSERT', schema: 'public', table: 'proactive_queue' },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (payload: any) => {
+          const row = payload?.new as { id: string; message: string; delivered: boolean } | null
+          if (!row?.message || row.delivered) return
+          setMessages(prev => [...prev, { role: 'buddy', content: row.message, timestamp: new Date() }])
+          void speak(row.message)
+          supabase
+            .from('proactive_queue')
+            .update({ delivered: true })
+            .eq('id', row.id)
+            .then(() => {})
+        }
+      )
+      .subscribe()
+
+    return () => { void supabase.removeChannel(channel) }
+  }, [speak])
 
   const surfaceSilentSummary = () => {
     const log = silentLogRef.current
@@ -290,7 +344,7 @@ export default function BuddyChat({ buddyName, buddyVoice }: { buddyName: string
             </div>
           </div>
         )}
-        {loading && (
+        {(loading || proactiveLoading) && (
           <div className="flex justify-start">
             <div className="bg-zinc-800 rounded-2xl rounded-bl-sm px-4 py-2">
               <div className="flex gap-1">

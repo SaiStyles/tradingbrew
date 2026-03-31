@@ -267,6 +267,46 @@ export const QueryAnalystOutputSchema = z.object({
 
 export type QueryAnalystOutput = z.infer<typeof QueryAnalystOutputSchema>
 
+// ─────────────────────────────────────────────────────────────────
+// Proactive Buddy types
+// ─────────────────────────────────────────────────────────────────
+
+export type ProactiveMode =
+  | 'greet'      // First open of trading day — Jarvis moment
+  | 'celebrate'  // Just logged a meaningful win
+  | 'check_in'   // Just logged a loss — presence, not analysis
+  | 'intervene'  // 3+ losses or drawdown threshold — "I need to say something"
+  | 'debrief'    // Session winding down — one final honest word
+  | 'reconnect'  // Coming back after 3+ days — no guilt, just warmth
+  | 'milestone'  // Streak / best day — specific celebration
+  | 'quiet'      // In app 20+ min with nothing said — light check-in
+
+export interface ProactiveGateOutput {
+  should_speak: boolean
+  mode: ProactiveMode
+  reason: string
+}
+
+export interface ProactiveParams {
+  trigger_type: string
+  traderPortrait: string
+  tradingDate: string
+  context: ContextPacket
+  lastProactiveAt: string | null
+  daysSinceLastSeen: number
+  user: {
+    buddy_name: string
+    buddy_personality: string
+    trading_timezone: string
+  }
+}
+
+export const ProactiveGateSchema = z.object({
+  should_speak: z.boolean(),
+  mode: z.enum(['greet', 'celebrate', 'check_in', 'intervene', 'debrief', 'reconnect', 'milestone', 'quiet']),
+  reason: z.string(),
+})
+
 export const SaveDetectorOutputSchema = z.object({
   save_trade: z.boolean(),
   trade_data: z.object({

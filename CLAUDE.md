@@ -296,6 +296,16 @@ SCRIBE (Haiku)
 - ✅ Trade saving to Supabase — CONFIRMED WORKING.
 - ✅ Trades table schema expansion — done. Added: setup_type, session_time,
      market_condition, risk_amount, r_multiple, exit_reason.
+- ✅ Proactive Buddy (Phase 1) — session opener live. BuddyChat calls /api/buddy/proactive
+     on mount. ProactiveGate (Haiku) decides should_speak + mode. ProactiveBuddy (Haiku)
+     generates personalised greeting using trader portrait. Falls back to generic if null.
+     8 modes: greet, celebrate, check_in, intervene, debrief, reconnect, milestone, quiet.
+- ✅ Proactive Buddy (Phase 2 skeleton) — cron endpoint at /api/proactive-check built.
+     Evaluates loss_streak, drawdown_threshold, eod_debrief, returning_user triggers.
+     Pushes to proactive_queue. BuddyChat subscribes via Supabase Realtime.
+     REQUIRES: Vercel Pro ($20/mo for per-minute cron) + run docs/add-proactive-tables.sql.
+- ✅ daily_portraits cache — reflect() result cached in Supabase once per user per day.
+     Prevents reflect() from firing on every new device/tab. Run docs/add-daily-portraits.sql.
 - ⬜ Buddy prompt — remove "system's locked to certain queries" hallucination.
      Buddy should never reference system limitations, just answer from what it knows.
 - ⬜ Streak card on /dashboard hardcoded "0 days" — fix later
