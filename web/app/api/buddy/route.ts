@@ -108,6 +108,7 @@ export async function POST(request: NextRequest) {
       console.log('[buddy] new trading day detected, clearing session')
       session.messages = []
       session.last_analysis = null
+      session.trader_portrait = '' // force fresh reflect() for the new day
     }
     session.session_date = tradingDate
 
@@ -127,11 +128,12 @@ export async function POST(request: NextRequest) {
 
     const t0 = Date.now()
 
-    // Portrait: fetch once per trading day. 3s timeout — if slow, use cached (empty for new users).
+    // Portrait: fetch once per trading day. Supabase cache checked first (free).
+    // Only calls Hindsight reflect() on cache miss. 3s timeout as safety net.
     const portraitPromise = session.trader_portrait
       ? Promise.resolve(session.trader_portrait)
       : Promise.race([
-          getTraderPortrait(user.id),
+          getTraderPortrait(user.id, tradingDate),
           new Promise<string>(resolve => setTimeout(() => resolve(''), 3000)),
         ])
 

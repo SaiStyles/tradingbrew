@@ -1,4 +1,5 @@
 import { HindsightClient } from '@vectorize-io/hindsight-client'
+import { createClient as createSupabaseClient } from '@/lib/supabase/server'
 
 function createClient(): HindsightClient | null {
   const baseUrl = process.env.HINDSIGHT_BASE_URL
@@ -95,8 +96,29 @@ export async function ensureBank(userId: string): Promise<void> {
   }
 }
 
-// Called once per session (cached). Returns a psychological briefing for Buddy.
-export async function getTraderPortrait(userId: string): Promise<string> {
+// Called once per trading day per user. Checks Supabase daily_portraits cache first —
+// only calls reflect() if no portrait exists for today. Saves result back to DB.
+export async function getTraderPortrait(userId: string, tradingDate: string): Promise<string> {
+  // 1. Check Supabase cache first — free, fast
+  try {
+    const supabase = await createSupabaseClient()
+    const { data: cached } = await supabase
+      .from('daily_portraits')
+      .select('portrait')
+      .eq('user_id', userId)
+      .eq('trading_date', tradingDate)
+      .maybeSingle()
+
+    if (cached?.portrait) {
+      console.log('[hindsight] reflect() served from daily_portraits cache')
+      return cached.portrait
+    }
+  } catch (e) {
+    console.error('[hindsight] daily_portraits cache read failed:', e)
+    // Fall through to reflect()
+  }
+
+  // 2. Cache miss — call Hindsight reflect()
   const client = createClient()
   if (!client) return ''
 
@@ -110,7 +132,22 @@ export async function getTraderPortrait(userId: string): Promise<string> {
         context: 'Pre-session Buddy briefing',
       }
     )
-    return response?.text ?? ''
+    const portrait = response?.text ?? ''
+
+    // 3. Save to daily_portraits cache — upsert in case of race condition
+    if (portrait) {
+      try {
+        const supabase = await createSupabaseClient()
+        await supabase
+          .from('daily_portraits')
+          .upsert({ user_id: userId, trading_date: tradingDate, portrait }, { onConflict: 'user_id,trading_date' })
+      } catch (e) {
+        console.error('[hindsight] daily_portraits cache write failed:', e)
+        // Non-fatal — portrait still returned to caller
+      }
+    }
+
+    return portrait
   } catch (e) {
     console.error('[hindsight] reflect failed:', e)
     return ''
@@ -124,8 +161,8 @@ export async function recallMemories(userId: string, query: string): Promise<str
   const bankId = getBankId(userId)
   try {
     const response = await client.recall(bankId, query, {
-      budget: 'mid',
-      maxTokens: 2048,
+      budget: 'low',
+      maxTokens: 1024,
     })
     return response.results.map(r => r.text)
   } catch (e) {
