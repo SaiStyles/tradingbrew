@@ -2,21 +2,9 @@
 
 ---
 
-## [2026-03-29] Premature save — fields missing from saved trade
+## [2026-03-29] Buddy hallucinating "system's locked to certain queries"
 
-SaveDetector fires as soon as 5 minimum fields appear in the 20-message window. User provided all fields (rr, followed_plan, execution_score, etc.) but saved trade only had exit time + pnl + direction. Fields that arrive after the save are dropped — only execution_score has a late-patch.
-
----
-
-## [2026-03-29] Exit time saved as entry time
-
-Saved trade shows `closed_at` (exit time) instead of `opened_at` (entry time). Entry time is the minimum requirement, not exit time. Extractor likely maps "got out at X" / "exited at X" into `opened_at` instead of `closed_at`.
-
----
-
-## [2026-03-29] Wrong direction on saved trade
-
-Trader says "short" but trade saves as "long". Extractor misreading direction in some message patterns.
+Buddy sometimes says "the system doesn't support that query" as an excuse when it doesn't know the answer. Should just respond from what it knows — never reference system limitations.
 
 ---
 

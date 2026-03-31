@@ -293,19 +293,14 @@ SCRIBE (Haiku)
      DevTools Network tab for debugging. Remove once trade saving is confirmed working.
 - ✅ Test suite: 102/102 passing (added 8 extractor implicit pattern tests, fixed
      stale chat-scenarios execution_score assertion)
-- ⬜ Trade saving to Supabase — UNCONFIRMED WORKING. Debug field added. Check
-     DevTools → Network → /api/buddy response for _debug_trade_error after triggering
-     a full trade save. Most likely cause: Supabase insert constraint or session not persisting.
-- ⬜ Trades table schema expansion — planned. Add: setup_type, session_time,
-     market_condition, risk_amount, r_multiple, exit_reason. See ideas.md.
-- ⬜ QueryAnalyst week-over-week grouping — DATE_TRUNC('week') pattern missing from
-     schema context. "Which weeks are best/worst" fails.
+- ✅ Trade saving to Supabase — CONFIRMED WORKING.
+- ✅ Trades table schema expansion — done. Added: setup_type, session_time,
+     market_condition, risk_amount, r_multiple, exit_reason.
 - ⬜ Buddy prompt — remove "system's locked to certain queries" hallucination.
      Buddy should never reference system limitations, just answer from what it knows.
 - ⬜ Streak card on /dashboard hardcoded "0 days" — fix later
 - ⬜ News alerts — DROPPED. News tab is standalone TradingView embed, kept separate from Buddy.
-- ⬜ Silent Mode — built in BuddyChat.tsx (silentModeRef + silentLogRef + surfaceSilentSummary),
-     needs trade saving confirmed working first
+- ⬜ Silent Mode — built in BuddyChat.tsx (silentModeRef + silentLogRef + surfaceSilentSummary)
 - ⬜ Confession Mode — DROPPED
 - ⬜ Tauri desktop app
 

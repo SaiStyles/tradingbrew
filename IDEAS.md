@@ -71,40 +71,6 @@ Trader speaks freely while in a session — Buddy listens but never replies. No 
   recognition instance must be recreated on every onend restart. Voice input may not work reliably until
   OpenAI Whisper or Deepgram replaces Web Speech STT.
 
-## 🎯 NEXT SESSION FOCUS: Trade Saving + Database Depth
-
-### 1. Debug trade insert (first thing)
-- `_debug_trade_error` field now in `/api/buddy` response when insert fails
-- Trigger a full trade save in Buddy chat → DevTools → Network → `/api/buddy` → check response JSON
-- Report exact error message → fix accordingly
-- Patches already applied: emotion_tag enum normalization, notes hardcoded null
-
-### 2. Trades table — schema expansion (after insert is confirmed working)
-Current fields are bare minimum. Add these so AI gets full picture:
-
-| Column | Type | Why |
-|--------|------|-----|
-| `setup_type` | text | breakout / pullback / reversal / news play — Analyst detects which setups work |
-| `session_time` | text enum | pre-market / open / mid-day / close — time-of-day patterns without parsing timestamps |
-| `market_condition` | text | trending / choppy / news-driven / range — cross-reference setups with conditions |
-| `risk_amount` | numeric | dollar amount risked — enables R-multiple calculation |
-| `r_multiple` | numeric | pnl / risk_amount — real edge measurement, comparable across account sizes |
-| `exit_reason` | text | target hit / stop hit / manual / time stop — detect early exit patterns |
-
-These unlock QueryAnalyst queries like:
-- "Am I profitable on breakouts vs reversals?"
-- "Do I cut winners on reversals?"
-- "What's my average R on morning trades?"
-
-### 3. QueryAnalyst — week-over-week grouping
-- "Which weeks are best and worst" → failing because no DATE_TRUNC('week') example in schema
-- Add week-level grouping to QueryAnalyst schema description
-
-### 4. Buddy prompt — stop saying "system's locked"
-- Buddy hallucinates "the system doesn't support that query" as an excuse
-- Should just answer from what it knows, never reference system limitations
-
----
 
 ## Proactive Buddy (Event-Driven)
 Buddy initiates — doesn't wait for the trader to type first. "Speaks before you ask."
