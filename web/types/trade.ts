@@ -280,6 +280,7 @@ export type ProactiveMode =
   | 'reconnect'  // Coming back after 3+ days — no guilt, just warmth
   | 'milestone'  // Streak / best day — specific celebration
   | 'quiet'      // In app 20+ min with nothing said — light check-in
+  | 'banter'     // Slow day, nothing happening — in-character entertainment, retention through delight
 
 export interface ProactiveGateOutput {
   should_speak: boolean
