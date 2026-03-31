@@ -79,4 +79,49 @@ describe('Extractor agent (live API)', () => {
     const no = await runExtractor('NQ short, lost 200, went off plan completely', TZ)
     expect(no.followed_plan).toBe(false)
   })
+
+  // Implicit pattern detection — new capability
+  it('detects implicit day-of-week pattern as historical_analysis', async () => {
+    const result = await runExtractor('I feel worse on Mondays', TZ)
+    expect(result.query_type).toBe('historical_analysis')
+    expect(result.has_trade).toBe(false)
+  })
+
+  it('detects implicit revenge trading pattern as historical_analysis', async () => {
+    const result = await runExtractor("I've been revenge trading a lot lately", TZ)
+    expect(result.query_type).toBe('historical_analysis')
+  })
+
+  it('detects implicit instrument concern as historical_analysis', async () => {
+    const result = await runExtractor('NQ always kills me', TZ)
+    expect(result.query_type).toBe('historical_analysis')
+  })
+
+  it('detects "struggling this week" as historical_analysis', async () => {
+    const result = await runExtractor('been struggling this week', TZ)
+    expect(result.query_type).toBe('historical_analysis')
+  })
+
+  it('detects explicit day query with subtype both', async () => {
+    const result = await runExtractor('how do I do on Mondays', TZ)
+    expect(result.query_type).toBe('historical_analysis')
+    expect(result.query_subtype).toBe('both')
+  })
+
+  it('detects open-ended psychology question with subtype psychology', async () => {
+    const result = await runExtractor("what's my biggest weakness as a trader", TZ)
+    expect(result.query_type).toBe('historical_analysis')
+    expect(result.query_subtype).toBe('psychology')
+  })
+
+  it('does NOT flag single-event trade report as historical_analysis', async () => {
+    const result = await runExtractor('just had a bad trade on NQ, lost 300', TZ)
+    expect(result.query_type).toBeNull()
+    expect(result.has_trade).toBe(true)
+  })
+
+  it('does NOT flag casual market chat as historical_analysis', async () => {
+    const result = await runExtractor('market looks choppy today', TZ)
+    expect(result.query_type).toBeNull()
+  })
 })
