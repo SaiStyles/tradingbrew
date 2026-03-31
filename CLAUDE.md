@@ -52,9 +52,18 @@ Think Tony Stark and Jarvis — the buddy no trader has ever had.
 
 ## Voice Design
 - Toggle ON/OFF — never always-on without consent
-- Green pulsing indicator when listening
+- Green pulsing indicator when listening, yellow when sound detected
 - Continuous listening when ON
-- Web Speech reads every response aloud automatically
+- STT: OpenAI Whisper via /api/stt — WAV blobs sent on speech end
+- TTS: OpenAI tts-1 via /api/tts — Web Audio API playback, sentence-parallel fetching
+- VAD: Silero VAD WASM via @ricky0123/vad-web (MicVAD) — ML-based, replaces amplitude SilenceDetector
+  → positiveSpeechThreshold: 0.5, negativeSpeechThreshold: 0.35
+  → minSpeechMs: 250, redemptionMs: 900, preSpeechPadMs: 150
+  → Requires COOP/COEP headers (next.config.ts) + ONNX WASM files in /public
+  → Dynamic import inside async fn — avoids SSR module resolution failure
+- Interruption: user speech stops TTS immediately (onSpeechStart → audioSourceRef.stop())
+- Voice selector: 6 OpenAI voices in Settings → users.buddy_voice_id
+- lib/voice/silenceDetector.ts — DELETED. lib/voice/getMimeType.ts — DELETED.
 
 ## Pricing
 - Launch: FREE — build users first
@@ -120,6 +129,9 @@ EXTRACTOR (Haiku)
 - Output: structured JSON fields only
 - Also detects: query_type ("historical_analysis" | null)
   and query_subtype ("data" | "psychology" | "both" | null)
+- query_type fires on BOTH explicit questions ("how do I do on Mondays?") AND
+  implicit pattern observations ("I feel worse on Mondays", "NQ always kills me",
+  "been struggling this week") — expanded this session
 - No history, no personality, pure extraction
 - Runs on every message
 
@@ -151,7 +163,7 @@ ANALYST (Haiku)
 - Output: violations, warnings, patterns
 - Detects: rule violations, revenge trading,
   overtrading, loss streaks, execution decline
-- Runs only when has_trade = true
+- Runs when has_trade = true OR session has prior messages
 - AI judgment only — no hardcoded pattern rules
 
 BUDDY (Haiku default, Sonnet for interventions)
@@ -262,11 +274,38 @@ SCRIBE (Haiku)
      13-week calendar heatmap. Filter: 7D | MTD | 30D | 3M | All. Default 30D.
 - ✅ Economic Calendar (/news) — TradingView embed widget, country filter buttons
      (USA/EUR/GBP/JPY/CAD/AUD), localStorage persistence, high-impact only
+- ✅ OpenAI TTS (tts-1) — replaces Web Speech Synthesis. Streams audio/mpeg via Web Audio API.
+     6 selectable voices in Settings. BuddyChat uses AudioContext + ArrayBuffer playback.
+- ✅ OpenAI Whisper STT — replaces Web Speech API input. MediaRecorder + VAD silence detection.
+     Sends audio to /api/stt on silence. Hallucination filter on server side.
+- ✅ Sentence-parallel TTS — speak() splits reply into sentences, fires all TTS fetches in
+     parallel, plays in order. Near-zero gap between sentences.
+- ✅ TTS generation counter (speakGenRef) — prevents two concurrent speak() calls from
+     fighting. New call cancels old one cleanly mid-sentence.
+- ✅ Silero VAD WASM — replaces amplitude SilenceDetector. ML-based speech detection.
+     @ricky0123/vad-web + onnxruntime-web@1.24.3. COOP/COEP headers in next.config.ts.
+     ONNX + worklet files in /public. Dynamic import pattern for SSR safety.
+- ✅ Extractor implicit pattern detection — query_type now fires on observations like
+     "I feel worse on Mondays", not just explicit questions. 20/20 tests passing.
+- ✅ emotion_tag normalization in trade insert — filters to valid enum only, prevents
+     Supabase CHECK constraint violations
+- ✅ _debug_trade_error in /api/buddy response — surfaces Supabase insert errors to
+     DevTools Network tab for debugging. Remove once trade saving is confirmed working.
+- ✅ Test suite: 102/102 passing (added 8 extractor implicit pattern tests, fixed
+     stale chat-scenarios execution_score assertion)
+- ⬜ Trade saving to Supabase — UNCONFIRMED WORKING. Debug field added. Check
+     DevTools → Network → /api/buddy response for _debug_trade_error after triggering
+     a full trade save. Most likely cause: Supabase insert constraint or session not persisting.
+- ⬜ Trades table schema expansion — planned. Add: setup_type, session_time,
+     market_condition, risk_amount, r_multiple, exit_reason. See ideas.md.
+- ⬜ QueryAnalyst week-over-week grouping — DATE_TRUNC('week') pattern missing from
+     schema context. "Which weeks are best/worst" fails.
+- ⬜ Buddy prompt — remove "system's locked to certain queries" hallucination.
+     Buddy should never reference system limitations, just answer from what it knows.
 - ⬜ Streak card on /dashboard hardcoded "0 days" — fix later
-- ⬜ OpenAI TTS — replace Web Speech Synthesis (plan in IDEAS.md)
 - ⬜ News alerts — DROPPED. News tab is standalone TradingView embed, kept separate from Buddy.
 - ⬜ Silent Mode — built in BuddyChat.tsx (silentModeRef + silentLogRef + surfaceSilentSummary),
-     voice input reliability issues remain (Chrome Web Speech API bugs)
+     needs trade saving confirmed working first
 - ⬜ Confession Mode — DROPPED
 - ⬜ Tauri desktop app
 
