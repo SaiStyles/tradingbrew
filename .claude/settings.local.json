@@ -65,7 +65,9 @@
       "Skill(update-config)",
       "WebFetch(domain:arxiv.org)",
       "WebFetch(domain:upstash.com)",
-      "WebFetch(domain:proactllm.github.io)"
+      "WebFetch(domain:proactllm.github.io)",
+      "WebFetch(domain:docs.vad.ricky0123.com)",
+      "WebFetch(domain:discord.com)"
     ],
     "defaultMode": "auto"
   }

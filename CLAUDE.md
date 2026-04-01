@@ -36,7 +36,7 @@ Think Tony Stark and Jarvis — the buddy no trader has ever had.
 - Agent Parser: shared lib/claude/parser.ts
 - Memory: Hindsight (gen2 agentic memory) — semantic recall, Mental Models, reflect()
 - Database Facts: Supabase PostgreSQL (trades, rules, accounts)
-- Voice: Web Speech API (free) + Web Speech Synthesis (free) → Whisper (input) + ElevenLabs (output) later
+- Voice: OpenAI Whisper STT (input) + OpenAI tts-1 (output) — LIVE. ElevenLabs later for character voices.
 - Deployment: Vercel
 - Desktop: Tauri (5MB, lighter than Electron) — post-launch
 
@@ -173,6 +173,8 @@ ANALYST (Haiku)
   overtrading, loss streaks, execution decline
 - Runs when has_trade = true OR session has prior messages
 - AI judgment only — no hardcoded pattern rules
+- Fully background — violations written via .then() callback, never blocks streaming response
+- One turn behind by design: Buddy uses previous turn's analysis (Analyst runs parallel to Buddy stream)
 
 BUDDY (Haiku always — Sonnet escalation removed)
 - Input: extracted + context (incl. historicalQuery) + analyst findings + state + traderPortrait
@@ -341,6 +343,18 @@ PROACTIVE BUDDY (Haiku) — NEW
      Prevents reflect() from firing on every new device/tab. Run docs/add-daily-portraits.sql.
 - ✅ Buddy prompt — "system's locked to certain queries" hallucination fixed.
      Hard rule added: never reference system limitations or capability limits.
+     Extended: "don't have access to" banned. Correct phrasing: "I've only seen today so far".
+- ✅ SSE streaming response — /api/buddy returns text/event-stream. Text appears at ~0.5s TTFT.
+     Tokens streamed as `data: {"type":"token","text":"..."}` events. Done event triggers save/Scribe.
+- ✅ Streaming TTS — BuddyChat detects sentence boundaries during token stream (extractCompleteSentences),
+     fires TTS fetch per sentence immediately, playStreamingSentences plays ordered promise array live.
+     First audio plays before Buddy finishes generating. Near-zero gap between sentences.
+- ✅ Analyst fully decoupled from streaming — violations registered via .then() callback on analystPromise.
+     Never blocks SSE response. Buddy uses previous turn's analysis (one turn behind by design).
+- ✅ ensureBank once per session — session flag `ensureBank_called` prevents duplicate Hindsight
+     bank-creation calls. Reduced from 2 calls/message to 1 call/session lifetime.
+- ✅ max_tokens reduced — Extractor: 150, Analyst: 300, SaveDetector: 200, Scribe: 300, QueryAnalyst: 400.
+     Buddy unchanged (300 regular / 500 with historicalQuery).
 - ⬜ Streak card on /dashboard hardcoded "0 days" — fix later
 - ⬜ News alerts — DROPPED. News tab is standalone TradingView embed, kept separate from Buddy.
 - ⬜ Silent Mode — built in BuddyChat.tsx (silentModeRef + silentLogRef + surfaceSilentSummary)

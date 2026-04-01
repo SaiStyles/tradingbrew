@@ -49,16 +49,13 @@ On the trade journal, each trading day has an "AI Note" — a short, warm paragr
 ## Streak Card Fix (Dashboard)
 The "Streak" card on `/dashboard` is hardcoded to "0 days". The real streak computation already exists in `StatsClient.tsx` — copy the logic there. Needs all-time trades query (not just today's trades which the dashboard currently fetches). Low effort, fix whenever.
 
-## OpenAI TTS — Replace Web Speech Synthesis
-Replace `window.speechSynthesis` with OpenAI TTS for a human-sounding Buddy voice.
-- Web Speech is robotic and inconsistent across browsers — not acceptable for a product
-- OpenAI tts-1, `onyx` or `nova` voice — natural, warm, consistent
-- Cost: $15/1M chars. At 1000 DAU (~3.6M chars/mo) = ~$54/mo. Beta is basically free.
-- No character voices — just one good human voice for now
-- V2: migrate to ElevenLabs Flash when personality voices become a feature (500+ DAU)
-- Architecture: new `/api/tts` route streams audio from OpenAI → browser plays via Web Audio API
-- BuddyChat.tsx: replace `speak()` function only, mic/STT stays Web Speech (free, unchanged)
-- Env var needed: `OPENAI_API_KEY` (package already installed)
+## ✅ OpenAI TTS — BUILT (Session 14)
+Replaced `window.speechSynthesis` with OpenAI TTS for a human-sounding Buddy voice.
+- /api/tts streams audio/mpeg from OpenAI tts-1 → Web Audio API ArrayBuffer playback
+- 6 selectable voices in Settings → users.buddy_voice_id
+- Sentence-parallel TTS: speak() fires all sentences in parallel, plays in order
+- speakGenRef generation counter prevents concurrent speak() calls from fighting
+- V2: migrate to ElevenLabs Flash for character personality voices (500+ DAU milestone)
 
 ## ✅ Silent Mode (Focus Mode) — BUILT (Session 13)
 Trader speaks freely while in a session — Buddy listens but never replies. No interruption to flow state.
@@ -71,6 +68,17 @@ Trader speaks freely while in a session — Buddy listens but never replies. No 
   recognition instance must be recreated on every onend restart. Voice input may not work reliably until
   OpenAI Whisper or Deepgram replaces Web Speech STT.
 
+
+## ✅ Pipeline Latency Optimization — BUILT (Session 15)
+Reduced text response from ~11s to ~0.5s TTFT. Voice first-audio from ~13s to ~2-3s.
+- SSE streaming: /api/buddy → text/event-stream. Tokens flow as they generate.
+- Streaming TTS: extractCompleteSentences() detects boundaries mid-stream, fires TTS per sentence.
+  playStreamingSentences() plays ordered promise array that grows live — voice starts before reply finishes.
+- Analyst fully decoupled: violations registered via .then(), never blocks response stream.
+- ensureBank session flag: Hindsight bank-creation reduced from 2 calls/message → 1 call/session.
+- max_tokens trimmed across all agents: Extractor 150, Analyst 300, SaveDetector 200, Scribe 300.
+- Irreducible voice floor ~2-3s: Whisper STT (~900ms) + Buddy TTFT (~400ms) + TTS first sentence (~600ms).
+  Root cause: Hindsight recallMemories is on critical path. Race condition fix (400ms window) deferred.
 
 ## ✅ Proactive Buddy — BUILT (Session 14)
 Buddy initiates — speaks first without user prompting. The Jarvis moment.
