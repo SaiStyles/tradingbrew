@@ -21,14 +21,18 @@ export async function runSaveDetector(params: SaveDetectorParams): Promise<Buddy
       .join('\n')
 
     const system = `You are a trade data extractor.
-Read the conversation and determine if a complete trade is ready to be saved.
+Read the FULL conversation and determine if a complete trade is ready to be saved.
+
+IMPORTANT: Trade fields may be spread across multiple conversation turns. Read every message.
+The CURRENT EXTRACTION at the bottom reflects only the LAST message — ignore its has_trade field.
+Make your save_trade decision based solely on whether the full conversation contains the required fields.
 
 A trade is ready when the conversation contains ALL of these fields:
 - instrument (NQ, ES, EUR/USD etc)
 - direction (long or short)
-- pnl (dollar amount trader made or lost)
-- opened_at (entry time)
-- emotion_tag (how trader felt)
+- pnl (dollar amount trader made or lost — "lost 800" means pnl = -800)
+- opened_at (any entry time mention — "entered at 9:30", "9:30am", "at the open")
+- emotion_tag (how trader felt — "frustrated", "calm", "FOMO" etc)
 
 These fields are optional but include if mentioned:
 - execution_score (number 1-10)
@@ -77,7 +81,7 @@ trade_data is null when save_trade is false.`
       messages: [
         {
           role: 'user' as const,
-          content: `CONVERSATION:\n${conversationStr}\n\nCURRENT EXTRACTION:\n${JSON.stringify(extracted)}\n\nAnalyze and return the JSON.`,
+          content: `CONVERSATION:\n${conversationStr}\n\nNOTE: CURRENT EXTRACTION below is from the LAST message only — fields may have been collected across multiple turns in the conversation above.\nCURRENT EXTRACTION:\n${JSON.stringify(extracted)}\n\nRead the FULL conversation to find all trade fields. Return JSON.`,
         },
         { role: 'assistant' as const, content: '{' },
       ],

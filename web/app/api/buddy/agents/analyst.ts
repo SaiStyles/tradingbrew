@@ -57,7 +57,7 @@ OUTPUT: Return ONLY valid JSON. No prose. No explanation.
 violations: rule violations only — use exact rule_id. severity: "warning" = at risk, "violation" = clearly broken.
 warnings: plain strings — psychological/behavioral concerns not tied to a specific rule.
 patterns: plain strings — recurring behaviors you can identify from session data.
-positives: plain strings — genuine strengths worth acknowledging.
+positives: plain strings — genuine strengths worth acknowledging. ALWAYS include at least one positive when: pnl > 0 AND (execution_score >= 7 OR followed_plan = true). Do not leave this empty for clearly good trades.
 All array items must be plain strings except violations (which are objects).`
 
     const userContent = `CURRENT TRADE (being collected, may be incomplete):

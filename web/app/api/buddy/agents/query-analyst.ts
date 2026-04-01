@@ -77,7 +77,9 @@ Think step by step:
 Return JSON only:
 {"sql":"SELECT ...","query_description":"plain English description of what this query returns","needs_sql":true}
 
-If the question is purely about psychology/emotions/feelings with no numerical component, return:
+IMPORTANT: If the question mentions ANY measurable metric (win rate, P&L, count, percentage, performance, "how do I do", "how did I", instrument comparison) — needs_sql MUST be true and sql MUST be populated.
+
+If the question is PURELY about psychology/emotions/feelings with absolutely no numerical component (e.g. "what is my biggest weakness emotionally?"), return:
 {"sql":null,"query_description":"<plain English>","needs_sql":false}`
 
     const result = await withRetry(() => anthropic.messages.create({
@@ -93,6 +95,28 @@ If the question is purely about psychology/emotions/feelings with no numerical c
     const raw = result.content[0].type === 'text' ? '{' + result.content[0].text : ''
     const parsed = parseWithSchema(raw, QueryAnalystOutputSchema)
     if (!parsed) return { sql: null, query_description: question, needs_sql: false }
+    // For 'data' subtypes, needs_sql must always be true — AI must not reclassify as psychology
+    if (querySubtype === 'data') {
+      if (parsed.sql && !parsed.needs_sql) {
+        return { ...parsed, needs_sql: true }
+      }
+      // If AI returned no SQL for a data question, retry once with explicit instruction
+      if (!parsed.sql) {
+        const retry = await withRetry(() => anthropic.messages.create({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 600,
+          system: [{ type: 'text', text: staticSystem, cache_control: { type: 'ephemeral' } }],
+          messages: [
+            { role: 'user', content: `A trader asked: "${question}"\n\nToday: ${currentDate} (timezone: ${tradingTimezone})\n\nIMPORTANT: This is a DATA question. You MUST generate SQL. Return needs_sql: true with a SELECT query.` },
+            { role: 'assistant', content: '{' },
+          ],
+        }))
+        const retryRaw = retry.content[0].type === 'text' ? '{' + retry.content[0].text : ''
+        const retryParsed = parseWithSchema(retryRaw, QueryAnalystOutputSchema)
+        if (retryParsed?.sql) return { ...retryParsed, needs_sql: true }
+        return { sql: null, query_description: parsed.query_description || question, needs_sql: true }
+      }
+    }
     return parsed
   } catch (e) {
     console.error('[query-analyst] failed:', e)

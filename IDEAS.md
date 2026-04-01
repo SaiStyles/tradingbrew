@@ -72,13 +72,14 @@ Trader speaks freely while in a session — Buddy listens but never replies. No 
   OpenAI Whisper or Deepgram replaces Web Speech STT.
 
 
-## Proactive Buddy (Event-Driven)
-Buddy initiates — doesn't wait for the trader to type first. "Speaks before you ask."
-- Trigger events (priority order): market open → EOD debrief → high-impact news (CPI/NFP/FOMC) → inactivity pattern → X/Twitter alerts
-- Architecture: SSE on BuddyChat (one-way push, simpler than WebSocket) + Vercel cron or Supabase pg_cron + Proactive Buddy agent
-- Key primitive: reflect() — "Given what you know about this trader and that CPI drops in 20 minutes, what should Buddy say?" One call, fully personalized
-- Proactive message drops into BuddyChat as a normal Buddy message — user replies naturally
-- Existing reactive pipeline untouched — proactive is a separate layer on top
-- news_events table already exists — news trigger is lowest-effort first win
+## ✅ Proactive Buddy — BUILT (Session 14)
+Buddy initiates — speaks first without user prompting. The Jarvis moment.
+- Phase 1 (live, free): session opener on BuddyChat mount → /api/buddy/proactive
+- Phase 2 (built, needs Vercel Pro $20/mo): per-minute cron → /api/proactive-check → proactive_queue → Supabase Realtime push
+- 9 modes: greet, reconnect, celebrate, check_in, intervene, debrief, milestone, quiet, banter
+- ProactiveGate (inner thoughts) + ProactiveBuddy (message gen) — both Haiku
+- Hard 30-min rate limit. Session-level skip guard (no double-greeting on refresh).
+- proactive_queue + proactive_log tables: already created in Supabase
+- CRON_SECRET env var needed in Vercel dashboard when upgrading to Pro
 
 

@@ -23,14 +23,16 @@ Think Tony Stark and Jarvis — the buddy no trader has ever had.
 - Database: Supabase (PostgreSQL)
 - Auth: Supabase Auth
 - Storage: Supabase Storage
-- AI Agents: 7-agent pipeline
+- AI Agents: 9-agent pipeline (7 reactive + 2 proactive)
   → Extractor (Haiku) — field extraction + query_type detection
   → Context (Pure TS, no AI) — data fetching from Supabase + Hindsight recall
   → QueryAnalyst (Haiku) — text-to-SQL for historical questions, gated on query_type
   → Analyst (Haiku) — pattern detection, background
-  → Buddy (Haiku default, Sonnet only when intervention_needed=true) — natural conversation, plain text
+  → Buddy (Haiku always) — natural conversation, plain text
   → SaveDetector (Haiku) — save decision
   → Scribe (Haiku) — psychological memory builder, fires post-response via after()
+  → ProactiveGate (Haiku) — inner thoughts: should_speak + mode decision
+  → ProactiveBuddy (Haiku) — unprompted message generation, 9 modes
 - Agent Parser: shared lib/claude/parser.ts
 - Memory: Hindsight (gen2 agentic memory) — semantic recall, Mental Models, reflect()
 - Database Facts: Supabase PostgreSQL (trades, rules, accounts)
@@ -172,7 +174,7 @@ ANALYST (Haiku)
 - Runs when has_trade = true OR session has prior messages
 - AI judgment only — no hardcoded pattern rules
 
-BUDDY (Haiku default, Sonnet for interventions)
+BUDDY (Haiku always — Sonnet escalation removed)
 - Input: extracted + context (incl. historicalQuery) + analyst findings + state + traderPortrait
 - Output: one natural reply only, no JSON ever
 - Owns: tone, empathy, personality, timing
@@ -286,7 +288,8 @@ PROACTIVE BUDDY (Haiku) — NEW
 - ✅ Agent fixes (retry logic, parser fix,
      Analyst injection, trade collision handling,
      max_tokens, emotion_tag consistency)
-- ✅ Test suite: 94/94 passing (parser, extractor, analyst, scribe, save-detector, pipeline, chat-scenarios, scribe-direct, query-analyst)
+- ✅ Test suite: 113/113 passing — run with `npx vitest run --no-file-parallelism`
+     (fileParallelism:false in config; sequential required to stay under 50 RPM rate limit)
 - ✅ Conversational Analytics — Query Agent, text-to-SQL, self-correction loop,
      Buddy storytelling, Supabase RPC executor (requires setup-analytics-function.sql)
 - ✅ Scribe time-anchoring — day of week in every observation,
@@ -322,8 +325,9 @@ PROACTIVE BUDDY (Haiku) — NEW
      Supabase CHECK constraint violations
 - ✅ _debug_trade_error in /api/buddy response — surfaces Supabase insert errors to
      DevTools Network tab for debugging. Remove once trade saving is confirmed working.
-- ✅ Test suite: 102/102 passing (added 8 extractor implicit pattern tests, fixed
-     stale chat-scenarios execution_score assertion)
+- ✅ Test suite: 113/113 passing (added 11 proactive agent tests, improved prompt
+     robustness for save-detector + query-analyst + analyst; sequential file execution
+     required via fileParallelism:false to stay under 50 RPM rate limit)
 - ✅ Trade saving to Supabase — CONFIRMED WORKING.
 - ✅ Trades table schema expansion — done. Added: setup_type, session_time,
      market_condition, risk_amount, r_multiple, exit_reason.
@@ -335,8 +339,8 @@ PROACTIVE BUDDY (Haiku) — NEW
      CRON_SECRET env var needed in Vercel dashboard when upgrading to Pro.
 - ✅ daily_portraits cache — reflect() result cached in Supabase once per user per day.
      Prevents reflect() from firing on every new device/tab. Run docs/add-daily-portraits.sql.
-- ⬜ Buddy prompt — remove "system's locked to certain queries" hallucination.
-     Buddy should never reference system limitations, just answer from what it knows.
+- ✅ Buddy prompt — "system's locked to certain queries" hallucination fixed.
+     Hard rule added: never reference system limitations or capability limits.
 - ⬜ Streak card on /dashboard hardcoded "0 days" — fix later
 - ⬜ News alerts — DROPPED. News tab is standalone TradingView embed, kept separate from Buddy.
 - ⬜ Silent Mode — built in BuddyChat.tsx (silentModeRef + silentLogRef + surfaceSilentSummary)

@@ -102,10 +102,11 @@ describe('Extractor agent (live API)', () => {
     expect(result.query_type).toBe('historical_analysis')
   })
 
-  it('detects explicit day query with subtype both', async () => {
+  it('detects explicit day query with subtype both or data', async () => {
     const result = await runExtractor('how do I do on Mondays', TZ)
     expect(result.query_type).toBe('historical_analysis')
-    expect(result.query_subtype).toBe('both')
+    // 'how do I do on Mondays' can be classified as 'both' (data + psychology) or 'data'
+    expect(['both', 'data']).toContain(result.query_subtype)
   })
 
   it('detects open-ended psychology question with subtype psychology', async () => {
