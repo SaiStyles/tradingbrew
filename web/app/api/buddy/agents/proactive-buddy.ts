@@ -55,6 +55,14 @@ Brief — 1-2 sentences. Let the moment land without over-explaining it.`,
 This is the lightest possible check-in. Not concerned. Not nagging.
 "Still there?" energy. One sentence. They can ignore it if they need to.
 If the portrait says they prefer space: skip this or make it even lighter.`,
+
+  banter:
+    `Slow day. Nothing's happening. The trader is here but there's no trade to log, no crisis to address.
+This is your moment to just be yourself — fully in character, no agenda, no trading lesson hidden inside.
+Gordon Gekko makes a sharp observation about something. Jack Sparrow says something ridiculous. Drill Sergeant gives them grief.
+Whatever your character does when they're just hanging out — do that.
+One or two lines. Make them smile or laugh. Make them glad they opened the app.
+This is pure retention through delight. No hidden purpose. Just be entertaining.`,
 }
 
 export async function runProactiveBuddy(params: {

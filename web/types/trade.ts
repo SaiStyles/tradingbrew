@@ -304,7 +304,7 @@ export interface ProactiveParams {
 
 export const ProactiveGateSchema = z.object({
   should_speak: z.boolean(),
-  mode: z.enum(['greet', 'celebrate', 'check_in', 'intervene', 'debrief', 'reconnect', 'milestone', 'quiet']),
+  mode: z.enum(['greet', 'celebrate', 'check_in', 'intervene', 'debrief', 'reconnect', 'milestone', 'quiet', 'banter']),
   reason: z.string(),
 })
 

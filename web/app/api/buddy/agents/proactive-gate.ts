@@ -67,6 +67,7 @@ MODE SELECTION GUIDE:
 - reconnect: daysSinceLastSeen >= 3. They've been away. Speak with warmth.
 - milestone: currentStreak.count >= 3 wins, or today is a personal best. Speak.
 - quiet: In app but nothing happening. Speak only if portrait suggests they benefit from check-ins — otherwise stay silent.
+- banter: Slow day, market is open, no trades, no crisis. Use only when there's genuinely nothing else to say — just be entertaining. Fires at most once per session.
 
 DECISION RULES:
 - session_start → greet (true) or reconnect (if daysSinceLastSeen >= 3)
@@ -75,6 +76,7 @@ DECISION RULES:
 - eod_debrief → debrief (true)
 - trade_logged with loss → check_in, but only if recentLossRun >= 2 or portrait says they spiral
 - trade_logged with win → celebrate, only if win was significant (>= $200 or personal best)
+- slow_day (no trades, market open, been in app 10+ min) → banter, only if no other trigger fired and portrait suggests they enjoy the character
 - When in doubt: silence is better than noise. A bad proactive message destroys trust.
 
 Return ONLY valid JSON:
