@@ -120,7 +120,13 @@ tradingbrew/
   → Empty for new users, activates as Scribe builds observations
 - Supabase memories table still exists in schema but is no longer written to
 
-## Agent Architecture — 7 Agent Pipeline
+## Agent Architecture — 9 Agent Pipeline
+
+**Reactive pipeline** (fires on every user message):
+- Extractor → Context → QueryAnalyst → Analyst + Buddy + SaveDetector (parallel) → Scribe (after())
+
+**Proactive pipeline** (fires without user prompting):
+- ProactiveGate + ProactiveBuddy → called on BuddyChat mount + Vercel cron (Phase 2)
 
 Every buddy message runs through this pipeline:
 
@@ -209,6 +215,31 @@ SCRIBE (Haiku)
 - should_write: false is valid and frequent — silence is discipline
 - If memory has Buddy implication, adds [Buddy: specific note] inline
 
+PROACTIVE GATE (Haiku) — NEW
+- Inner thoughts layer. Decides whether Buddy should speak unprompted.
+- Input: trigger_type + trader portrait + session stats + lastProactiveAt + daysSinceLastSeen
+- Output: { should_speak: boolean, mode: ProactiveMode, reason: string }
+- Hard rate limit: never fires twice within 30 minutes
+- For session_start: route-level guard skips if session already has messages today
+- 9 modes: greet, celebrate, check_in, intervene, debrief, reconnect, milestone, quiet, banter
+- Silence is better than noise — when in doubt, should_speak = false
+
+PROACTIVE BUDDY (Haiku) — NEW
+- Generates the actual proactive message once gate says should_speak = true
+- Input: mode + trader portrait + context + tradingDate + user (name/personality/tz)
+- Output: plain text, 1-3 sentences, full personality applied
+- Each mode has specific stage directions — emotional context, not a script
+- greet: first open of day, Jarvis moment
+- celebrate: meaningful win acknowledgment
+- check_in: after a loss, presence not analysis
+- intervene: 3+ losses or drawdown — "I need to say something"
+- debrief: session winding down, one final honest word
+- reconnect: returning after 3+ days, no guilt
+- milestone: streak/best day, specific not generic
+- quiet: in app 20+ min with nothing said
+- banter: slow day, pure in-character entertainment, retention through delight
+- Called from: /api/buddy/proactive (Phase 1) + /api/proactive-check cron (Phase 2)
+
 ## Buddy Rules — CRITICAL
 - Use what you know naturally — "Yeah that's a pattern for you" not "you mentioned on March 3rd..."
 - Never quote dates, timestamps, or file back anything verbatim from memory
@@ -296,14 +327,12 @@ SCRIBE (Haiku)
 - ✅ Trade saving to Supabase — CONFIRMED WORKING.
 - ✅ Trades table schema expansion — done. Added: setup_type, session_time,
      market_condition, risk_amount, r_multiple, exit_reason.
-- ✅ Proactive Buddy (Phase 1) — session opener live. BuddyChat calls /api/buddy/proactive
-     on mount. ProactiveGate (Haiku) decides should_speak + mode. ProactiveBuddy (Haiku)
-     generates personalised greeting using trader portrait. Falls back to generic if null.
-     8 modes: greet, celebrate, check_in, intervene, debrief, reconnect, milestone, quiet.
-- ✅ Proactive Buddy (Phase 2 skeleton) — cron endpoint at /api/proactive-check built.
-     Evaluates loss_streak, drawdown_threshold, eod_debrief, returning_user triggers.
-     Pushes to proactive_queue. BuddyChat subscribes via Supabase Realtime.
-     REQUIRES: Vercel Pro ($20/mo for per-minute cron) + run docs/add-proactive-tables.sql.
+- ✅ Proactive Buddy — full 9-agent system. Buddy speaks first on session open.
+     Phase 1 (free): /api/buddy/proactive GET, called on BuddyChat mount.
+     Phase 2 (Vercel Pro): /api/proactive-check cron, every minute, Supabase Realtime push.
+     9 modes: greet, celebrate, check_in, intervene, debrief, reconnect, milestone, quiet, banter.
+     proactive_queue + proactive_log tables: run docs/add-proactive-tables.sql (DONE).
+     CRON_SECRET env var needed in Vercel dashboard when upgrading to Pro.
 - ✅ daily_portraits cache — reflect() result cached in Supabase once per user per day.
      Prevents reflect() from firing on every new device/tab. Run docs/add-daily-portraits.sql.
 - ⬜ Buddy prompt — remove "system's locked to certain queries" hallucination.
