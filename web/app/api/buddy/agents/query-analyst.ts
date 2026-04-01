@@ -84,7 +84,7 @@ If the question is PURELY about psychology/emotions/feelings with absolutely no 
 
     const result = await withRetry(() => anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 600,
+      max_tokens: 400,
       system: [{ type: 'text', text: staticSystem, cache_control: { type: 'ephemeral' } }],
       messages: [
         { role: 'user', content: `A trader asked: "${question}"\n\nToday: ${currentDate} (timezone: ${tradingTimezone})` },
@@ -104,7 +104,7 @@ If the question is PURELY about psychology/emotions/feelings with absolutely no 
       if (!parsed.sql) {
         const retry = await withRetry(() => anthropic.messages.create({
           model: 'claude-haiku-4-5-20251001',
-          max_tokens: 600,
+          max_tokens: 400,
           system: [{ type: 'text', text: staticSystem, cache_control: { type: 'ephemeral' } }],
           messages: [
             { role: 'user', content: `A trader asked: "${question}"\n\nToday: ${currentDate} (timezone: ${tradingTimezone})\n\nIMPORTANT: This is a DATA question. You MUST generate SQL. Return needs_sql: true with a SELECT query.` },

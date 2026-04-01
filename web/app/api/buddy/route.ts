@@ -22,6 +22,7 @@ interface SessionState {
   session_date: string    // YYYY-MM-DD in trading timezone
   trader_portrait: string // reflect() result, refreshed each new trading day
   last_trade_id: string | null // ID of last saved trade — used to patch late fields (e.g. execution_score)
+  ensureBank_called: boolean // fire-and-forget once per session, not every message
 }
 
 // ------------------------------------------------------------------
@@ -35,6 +36,7 @@ function defaultSession(): SessionState {
     session_date: '',
     trader_portrait: '',
     last_trade_id: null,
+    ensureBank_called: false,
   }
 }
 
@@ -97,6 +99,7 @@ export async function POST(request: NextRequest) {
           session_date: (raw.session_date as string) ?? '',
           trader_portrait: (raw.trader_portrait as string) ?? '',
           last_trade_id: (raw.last_trade_id as string | null) ?? null,
+          ensureBank_called: (raw.ensureBank_called as boolean) ?? false,
         }
       } catch {
         session = defaultSession()
@@ -114,8 +117,11 @@ export async function POST(request: NextRequest) {
     }
     session.session_date = tradingDate
 
-    // Lazy bank creation — fire-and-forget, only matters on first message
-    ensureBank(user.id).catch(err => console.error('[hindsight] ensureBank failed:', err))
+    // Lazy bank creation — fire-and-forget, only once per session (not every message)
+    if (!session.ensureBank_called) {
+      session.ensureBank_called = true
+      ensureBank(user.id).catch(err => console.error('[hindsight] ensureBank failed:', err))
+    }
 
     // Step 2: Extractor + Context in parallel
     const EXTRACTOR_EMPTY: ExtractedData = {
@@ -220,6 +226,29 @@ export async function POST(request: NextRequest) {
       ? runSaveDetector({ messages: conversationSoFar, extracted, tradingDate, tradingTimezone })
       : Promise.resolve({ reply: '', save_trade: false, trade_data: null })
 
+    // Analyst violations writer — fires when Analyst finishes, never blocks the response
+    const currentSessionId = sessionResult.data?.id ?? null
+    analystPromise.then(analysis => {
+      if (!analysis || analysis.violations.length === 0) return
+      const violationInserts = analysis.violations.map(v =>
+        supabase.from('rule_violations').insert({
+          rule_id: v.rule_id,
+          user_id: user.id,
+          trade_id: null,
+          session_id: currentSessionId,
+          analyst_reasoning: v.reasoning,
+        })
+      )
+      const triggerUpdates = analysis.violations.map(v =>
+        supabase.from('rules')
+          .update({ last_triggered_at: new Date().toISOString() })
+          .eq('id', v.rule_id)
+      )
+      Promise.all([...violationInserts, ...triggerUpdates])
+        .then(() => console.log('[violations] writes complete'))
+        .catch(err => console.error('[violations] write failed:', err))
+    }).catch(() => {})
+
     // ── Streaming SSE response ──────────────────────────────────────────
     // Buddy tokens stream to client immediately.
     // SaveDetector + Analyst run in parallel — usually done by the time streaming finishes.
@@ -291,34 +320,11 @@ export async function POST(request: NextRequest) {
 
           console.log('[agents] buddy streaming done:', Date.now() - t1, 'ms')
 
-          // Await background agents — they ran in parallel with streaming, likely already done
-          const [analysis, saveResultRaw] = await Promise.all([analystPromise, saveDetectorPromise])
-          const saveResult = saveResultRaw
+          // Only await SaveDetector — Analyst runs fully in background (violations handled above)
+          const saveResult = await saveDetectorPromise
 
-          console.log('[agents] analyst + save-detector done:', Date.now() - t1, 'ms')
+          console.log('[agents] save-detector done:', Date.now() - t1, 'ms')
           console.log('[save-detector] result:', JSON.stringify({ save_trade: saveResult.save_trade, instrument: saveResult.trade_data?.instrument, pnl: saveResult.trade_data?.pnl }))
-
-          // Write rule violations — fire-and-forget
-          if (analysis && analysis.violations && analysis.violations.length > 0) {
-            const currentSessionId = sessionResult.data?.id ?? null
-            const violationInserts = analysis.violations.map(v =>
-              supabase.from('rule_violations').insert({
-                rule_id: v.rule_id,
-                user_id: user.id,
-                trade_id: null,
-                session_id: currentSessionId,
-                analyst_reasoning: v.reasoning,
-              })
-            )
-            const triggerUpdates = analysis.violations.map(v =>
-              supabase.from('rules')
-                .update({ last_triggered_at: new Date().toISOString() })
-                .eq('id', v.rule_id)
-            )
-            Promise.all([...violationInserts, ...triggerUpdates])
-              .then(() => console.log('[violations] writes complete'))
-              .catch(err => console.error('[violations] write failed:', err))
-          }
 
           // Update conversation history
           const updatedMessages: ChatMessage[] = [
@@ -412,13 +418,14 @@ export async function POST(request: NextRequest) {
           } catch { /* scribe still runs with empty observations */ }
 
           // Persist session state — fire-and-forget (not critical path)
-          const nextAnalysis = analysis ?? session.last_analysis ?? null
+          // last_analysis uses previous turn's value — Analyst runs in background and is one turn behind by design
           const sessionPayload = {
             messages: updatedMessages,
-            last_analysis: nextAnalysis,
+            last_analysis: session.last_analysis ?? null,
             session_date: tradingDate,
             trader_portrait: session.trader_portrait,
             last_trade_id: session.last_trade_id,
+            ensureBank_called: session.ensureBank_called,
           }
           const existingId = sessionResult.data?.id
           if (existingId && !isNewDay) {
