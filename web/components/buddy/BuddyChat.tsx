@@ -12,6 +12,16 @@ function splitSentences(text: string): string[] {
   return parts.map(s => s.trim()).filter(s => s.length > 0)
 }
 
+// During streaming: extract complete sentences from a growing buffer.
+// Returns complete sentences ready for TTS + the leftover incomplete fragment.
+function extractCompleteSentences(text: string): { complete: string[]; remaining: string } {
+  const parts = text.split(/(?<=[.!?])\s+(?=[A-Z"'\d])/)
+  if (parts.length <= 1) return { complete: [], remaining: text }
+  const complete = parts.slice(0, -1).map(s => s.trim()).filter(Boolean)
+  const remaining = (parts[parts.length - 1] ?? '').trim()
+  return { complete, remaining }
+}
+
 type Message = {
   role: 'user' | 'buddy'
   content: string
@@ -120,6 +130,42 @@ export default function BuddyChat({ buddyName, buddyVoice }: { buddyName: string
       }
     }
   }, [fetchTTSBuffer, playBuffer])
+
+  // Streaming TTS: plays an ordered array of TTS fetch promises that grows live.
+  // Starts as soon as the first sentence is ready — doesn't wait for full reply.
+  // streamState.done = true signals that no more sentences will be added.
+  const playStreamingSentences = useCallback(async (
+    promises: Promise<ArrayBuffer | null>[],
+    streamState: { done: boolean }
+  ) => {
+    const myGen = ++speakGenRef.current
+    try { audioSourceRef.current?.stop() } catch { /* already stopped */ }
+    isSpeakingRef.current = true
+    setIsSpeaking(true)
+
+    try {
+      let i = 0
+      while (true) {
+        if (i < promises.length) {
+          if (!isSpeakingRef.current || speakGenRef.current !== myGen) break
+          const buf = await promises[i]
+          if (!buf || !isSpeakingRef.current || speakGenRef.current !== myGen) break
+          await playBuffer(buf)
+          i++
+        } else if (streamState.done) {
+          break  // stream finished and all sentences played
+        } else {
+          // Stream still active — wait briefly for next sentence to arrive
+          await new Promise(r => setTimeout(r, 50))
+        }
+      }
+    } finally {
+      if (speakGenRef.current === myGen) {
+        isSpeakingRef.current = false
+        setIsSpeaking(false)
+      }
+    }
+  }, [playBuffer])
 
   // Keep speakRef current so the opener can call the latest speak without it being a dep
   useEffect(() => { speakRef.current = speak }, [speak])
@@ -263,6 +309,12 @@ export default function BuddyChat({ buddyName, buddyVoice }: { buddyName: string
       let fullReply = ''
       let msgAdded = false
 
+      // Streaming TTS state — populated as sentences complete during streaming
+      const ttsState = { done: false }
+      const ttsPromises: Promise<ArrayBuffer | null>[] = []
+      let ttsBuffer = ''   // text waiting for next sentence boundary
+      let ttsStarted = false
+
       const flushBuffer = (done = false) => {
         const lines = buffer.split('\n')
         // Keep incomplete last line unless we're done
@@ -292,13 +344,34 @@ export default function BuddyChat({ buddyName, buddyVoice }: { buddyName: string
                   return copy
                 })
               }
+
+              // TTS during streaming: fire fetch as each sentence completes
+              ttsBuffer += event.text
+              const { complete, remaining } = extractCompleteSentences(ttsBuffer)
+              ttsBuffer = remaining
+              for (const sentence of complete) {
+                ttsPromises.push(fetchTTSBuffer(sentence))
+                if (!ttsStarted) {
+                  ttsStarted = true
+                  void playStreamingSentences(ttsPromises, ttsState)
+                }
+              }
             }
           } else if (event.type === 'done') {
             if (isSilent) {
               silentLogRef.current.push({ action: (event.action as string | null) ?? null, trade_data: (event.trade_data as { instrument?: string; pnl?: number } | null) ?? null })
               setSilentCount(silentLogRef.current.length)
-            } else if (fullReply) {
-              void speak(fullReply)
+            } else {
+              // Flush any remaining text that didn't end with sentence boundary
+              if (ttsBuffer.trim()) {
+                ttsPromises.push(fetchTTSBuffer(ttsBuffer))
+                ttsBuffer = ''
+              }
+              ttsState.done = true
+              // If no sentence boundary was ever hit (very short reply), start player now
+              if (!ttsStarted && ttsPromises.length > 0) {
+                void playStreamingSentences(ttsPromises, ttsState)
+              }
             }
           } else if (event.type === 'error') {
             console.error('[buddy] stream error event:', event.message)
