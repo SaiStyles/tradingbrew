@@ -2,17 +2,14 @@ import Anthropic from '@anthropic-ai/sdk'
 import type { BuddyParams } from '@/types/trade'
 import { withRetry } from '@/lib/claude/retry'
 
-export async function runBuddy(params: BuddyParams): Promise<string> {
-  try {
-    const apiKey = process.env.ANTHROPIC_API_KEY
-    if (!apiKey) return "Give me a second..."
+// ── Build the full API request params ────────────────────────────────────
+// Shared between runBuddy (tests / fallback) and createBuddyStream (route)
+function buildBuddyApiParams(params: BuddyParams): Anthropic.Messages.MessageCreateParamsNonStreaming {
+  const { message, extracted, context, analysis, messages, tradingDate, traderPortrait, user } = params
 
-    const anthropic = new Anthropic({ apiKey })
-    const { message, extracted, context, analysis, messages, tradingDate, traderPortrait, user } = params
-
-    // ── Static block (cached) ──────────────────────────────────────────
-    // Identity + all behavioral instructions — never changes per message
-    const staticInstructions = `You are ${user.buddy_name}.
+  // ── Static block (cached) ──────────────────────────────────────────
+  // Identity + all behavioral instructions — never changes per message
+  const staticInstructions = `You are ${user.buddy_name}.
 
 EMBODY THIS COMPLETELY: ${user.buddy_personality}
 This is not a style preference — it IS who you are. Commit fully to this character: their voice, energy, word choice, rhythm. Jack Sparrow rambles with charm. Drill Sergeant barks and pushes. Zen Master is unhurried and spacious. Gordon Gekko is sharp, ruthless, direct. Whatever the character — that's your voice entirely, not a costume you wear.
@@ -120,66 +117,66 @@ If they push back on a claim → concede immediately: "you're right, I only know
 
 Plain text only. Real conversation only.`
 
-    // ── Dynamic context (not cached) ──────────────────────────────────
-    // Everything that changes per message
+  // ── Dynamic context (not cached) ──────────────────────────────────
+  // Everything that changes per message
 
-    const newsStr = context.upcomingNews.length > 0
-      ? context.upcomingNews.map(n => `${n.event_name} (${n.scheduled_at})`).join(', ')
-      : 'None'
+  const newsStr = context.upcomingNews.length > 0
+    ? context.upcomingNews.map(n => `${n.event_name} (${n.scheduled_at})`).join(', ')
+    : 'None'
 
-    const rulesStr = context.active_rules.length > 0
-      ? context.active_rules.slice(0, 5).map(r => `\n- ${r.raw_text}`).join('')
-      : '\n- None'
+  const rulesStr = context.active_rules.length > 0
+    ? context.active_rules.slice(0, 5).map(r => `\n- ${r.raw_text}`).join('')
+    : '\n- None'
 
-    // Only non-null trade fields — no null noise
-    const tradeFields = ['instrument', 'direction', 'pnl', 'opened_at', 'closed_at', 'emotion', 'execution_score', 'followed_plan', 'has_trade'] as const
-    const extractedSummary = tradeFields
-      .filter(k => extracted[k] !== null && extracted[k] !== false)
-      .map(k => `${k}: ${extracted[k]}`)
-      .join(' | ') || 'nothing yet'
+  // Only non-null trade fields — no null noise
+  const tradeFields = ['instrument', 'direction', 'pnl', 'opened_at', 'closed_at', 'emotion', 'execution_score', 'followed_plan', 'has_trade'] as const
+  const extractedSummary = tradeFields
+    .filter(k => extracted[k] !== null && extracted[k] !== false)
+    .map(k => `${k}: ${extracted[k]}`)
+    .join(' | ') || 'nothing yet'
 
-    const streakStr = context.currentStreak
-      ? `${context.currentStreak.count}-day ${context.currentStreak.type} streak`
-      : 'No current streak'
+  const streakStr = context.currentStreak
+    ? `${context.currentStreak.count}-day ${context.currentStreak.type} streak`
+    : 'No current streak'
 
-    const accountStr = context.account
-      ? `${context.account.nickname ?? context.account.account_type}${context.account.daily_loss_limit ? ` | Daily limit: $${context.account.daily_loss_limit}` : ''}${context.account.current_drawdown != null ? ` | Drawdown: $${context.account.current_drawdown}` : ''}`
-      : 'None'
+  const accountStr = context.account
+    ? `${context.account.nickname ?? context.account.account_type}${context.account.daily_loss_limit ? ` | Daily limit: $${context.account.daily_loss_limit}` : ''}${context.account.current_drawdown != null ? ` | Drawdown: $${context.account.current_drawdown}` : ''}`
+    : 'None'
 
-    // Merge analyst findings + violations into one section
-    const findingLines: string[] = []
-    if (analysis) {
-      if (analysis.violations.length > 0)
-        findingLines.push(`VIOLATIONS:\n${analysis.violations.map(v => `- ${v.reasoning} (${v.severity})`).join('\n')}`)
-      if (analysis.warnings.length > 0)
-        findingLines.push(`Warnings: ${analysis.warnings.join(', ')}`)
-      if (analysis.patterns.length > 0)
-        findingLines.push(`Patterns: ${analysis.patterns.join(', ')}`)
-      if (analysis.positives.length > 0)
-        findingLines.push(`Positives: ${analysis.positives.join(', ')}`)
-      if (analysis.intervention_needed)
-        findingLines.push(`INTERVENTION NEEDED: ${analysis.intervention_type}`)
-    }
-    const analysisSection = findingLines.length > 0 ? findingLines.join('\n') : 'No findings'
+  // Merge analyst findings + violations into one section
+  const findingLines: string[] = []
+  if (analysis) {
+    if (analysis.violations.length > 0)
+      findingLines.push(`VIOLATIONS:\n${analysis.violations.map(v => `- ${v.reasoning} (${v.severity})`).join('\n')}`)
+    if (analysis.warnings.length > 0)
+      findingLines.push(`Warnings: ${analysis.warnings.join(', ')}`)
+    if (analysis.patterns.length > 0)
+      findingLines.push(`Patterns: ${analysis.patterns.join(', ')}`)
+    if (analysis.positives.length > 0)
+      findingLines.push(`Positives: ${analysis.positives.join(', ')}`)
+    if (analysis.intervention_needed)
+      findingLines.push(`INTERVENTION NEEDED: ${analysis.intervention_type}`)
+  }
+  const analysisSection = findingLines.length > 0 ? findingLines.join('\n') : 'No findings'
 
-    const memoriesStr = context.memories.length > 0
-      ? context.memories.join('\n')
-      : 'None'
+  const memoriesStr = context.memories.length > 0
+    ? context.memories.join('\n')
+    : 'None'
 
-    const historicalQueryStr = context.historicalQuery
-      ? `HISTORICAL QUERY: ${context.historicalQuery.query_description}
+  const historicalQueryStr = context.historicalQuery
+    ? `HISTORICAL QUERY: ${context.historicalQuery.query_description}
 ${context.historicalQuery.results.length > 0
   ? `DATA:\n${JSON.stringify(context.historicalQuery.results, null, 2)}`
   : context.historicalQuery.error
     ? `No data available (${context.historicalQuery.error})`
     : 'No data found for this query.'}`
-      : null
+    : null
 
-    const portraitSection = traderPortrait
-      ? `WHO THIS TRADER IS (your living understanding — never reference this directly, just let it shape how you show up):\n${traderPortrait}\n\n`
-      : ''
+  const portraitSection = traderPortrait
+    ? `WHO THIS TRADER IS (your living understanding — never reference this directly, just let it shape how you show up):\n${traderPortrait}\n\n`
+    : ''
 
-    const dynamicContext = `${portraitSection}TODAY: ${tradingDate} | TZ: ${user.trading_timezone}
+  const dynamicContext = `${portraitSection}TODAY: ${tradingDate} | TZ: ${user.trading_timezone}
 
 CURRENT TRADE:
 ${extractedSummary}
@@ -200,22 +197,42 @@ PAST HISTORY:
 ${memoriesStr}
 ${historicalQueryStr ? `\n${historicalQueryStr}` : ''}`
 
-    const result = await withRetry(() => anthropic.messages.create({
-      model: params.model ?? 'claude-haiku-4-5-20251001',
-      max_tokens: context.historicalQuery ? 500 : 300,
-      system: [
-        { type: 'text', text: staticInstructions, cache_control: { type: 'ephemeral' } },
-        { type: 'text', text: dynamicContext },
-      ],
-      messages: [
-        ...messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-        { role: 'user' as const, content: message },
-      ],
-    }))
+  return {
+    model: params.model ?? 'claude-haiku-4-5-20251001',
+    max_tokens: context.historicalQuery ? 500 : 300,
+    system: [
+      { type: 'text' as const, text: staticInstructions, cache_control: { type: 'ephemeral' as const } },
+      { type: 'text' as const, text: dynamicContext },
+    ],
+    messages: [
+      ...messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+      { role: 'user' as const, content: message },
+    ],
+  }
+}
+
+// ── Non-streaming: used by tests and as fallback ──────────────────────────
+export async function runBuddy(params: BuddyParams): Promise<string> {
+  try {
+    const apiKey = process.env.ANTHROPIC_API_KEY
+    if (!apiKey) return "Give me a second..."
+
+    const anthropic = new Anthropic({ apiKey })
+    const result = await withRetry(() => anthropic.messages.create(buildBuddyApiParams(params)))
 
     return result.content[0].type === 'text' ? result.content[0].text.trim() : "Give me a second..."
   } catch (e) {
     console.error('[buddy-agent] failed:', e)
     return "Give me a second..."
   }
+}
+
+// ── Streaming: used by route.ts for real-time token delivery ─────────────
+// Returns the Anthropic MessageStream, or null if no API key
+export function createBuddyStream(params: BuddyParams) {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) return null
+
+  const anthropic = new Anthropic({ apiKey })
+  return anthropic.messages.stream(buildBuddyApiParams(params))
 }

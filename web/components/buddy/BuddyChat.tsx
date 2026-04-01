@@ -35,6 +35,8 @@ export default function BuddyChat({ buddyName, buddyVoice }: { buddyName: string
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const isSpeakingRef = useRef(false)
   const silentModeRef = useRef(false)
+  const openerFiredRef = useRef(false) // prevents re-firing when speak/buddyVoice refs change
+  const speakRef = useRef<(text: string) => Promise<void>>(async () => {})
   const silentLogRef = useRef<SilentLogEntry[]>([])
   const audioCtxRef = useRef<AudioContext | null>(null)
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null)
@@ -119,10 +121,17 @@ export default function BuddyChat({ buddyName, buddyVoice }: { buddyName: string
     }
   }, [fetchTTSBuffer, playBuffer])
 
+  // Keep speakRef current so the opener can call the latest speak without it being a dep
+  useEffect(() => { speakRef.current = speak }, [speak])
+
   // Session opener: Buddy speaks first on mount — the Jarvis moment
   // Calls proactive API, which runs ProactiveGate + ProactiveBuddy and returns a personalised greeting.
   // Falls back to generic greeting if API returns null or errors.
+  // openerFiredRef prevents re-firing when buddyVoice loads async and causes speak to change reference.
   useEffect(() => {
+    if (openerFiredRef.current) return
+    openerFiredRef.current = true
+
     let cancelled = false
     const fetchOpener = async () => {
       try {
@@ -134,7 +143,7 @@ export default function BuddyChat({ buddyName, buddyVoice }: { buddyName: string
         setMessages([{ role: 'buddy', content: openerMessage, timestamp: new Date() }])
 
         if (data.message) {
-          void speak(data.message)
+          void speakRef.current(data.message)
         }
       } catch {
         if (!cancelled) {
@@ -146,7 +155,8 @@ export default function BuddyChat({ buddyName, buddyVoice }: { buddyName: string
     }
     void fetchOpener()
     return () => { cancelled = true }
-  }, [buddyName, speak])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Phase 2: Supabase Realtime — receives cron-triggered proactive messages (intervene, debrief, etc.)
   // Fires when the cron job inserts a row into proactive_queue for this user.
@@ -229,7 +239,6 @@ export default function BuddyChat({ buddyName, buddyVoice }: { buddyName: string
     const isSilent = silentModeRef.current
 
     if (!isSilent) setLoading(true)
-
     if (!isSilent) {
       setMessages(prev => [...prev, { role: 'user', content: text, timestamp: new Date() }])
     }
@@ -239,16 +248,69 @@ export default function BuddyChat({ buddyName, buddyVoice }: { buddyName: string
       const res = await fetch('/api/buddy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text })
+        body: JSON.stringify({ message: text }),
       })
-      const data = await res.json()
 
-      if (isSilent) {
-        silentLogRef.current.push({ action: data.action ?? null, trade_data: data.trade_data ?? null })
-        setSilentCount(silentLogRef.current.length)
-      } else {
-        setMessages(prev => [...prev, { role: 'buddy', content: data.reply, timestamp: new Date() }])
-        void speak(data.reply)
+      if (!res.ok || !res.body) {
+        console.error('[buddy] response error:', res.status)
+        if (!isSilent) setLoading(false)
+        return
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let fullReply = ''
+      let msgAdded = false
+
+      const flushBuffer = (done = false) => {
+        const lines = buffer.split('\n')
+        // Keep incomplete last line unless we're done
+        buffer = done ? '' : (lines.pop() ?? '')
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const raw = line.slice(6).trim()
+          if (!raw) continue
+
+          let event: Record<string, unknown>
+          try { event = JSON.parse(raw) as Record<string, unknown> }
+          catch { continue }
+
+          if (event.type === 'token' && typeof event.text === 'string') {
+            fullReply += event.text
+            if (!isSilent) {
+              if (!msgAdded) {
+                // Add the placeholder buddy message
+                setMessages(prev => [...prev, { role: 'buddy', content: fullReply, timestamp: new Date() }])
+                msgAdded = true
+              } else {
+                // Update the last message in place
+                setMessages(prev => {
+                  const copy = [...prev]
+                  copy[copy.length - 1] = { ...copy[copy.length - 1], content: fullReply }
+                  return copy
+                })
+              }
+            }
+          } else if (event.type === 'done') {
+            if (isSilent) {
+              silentLogRef.current.push({ action: (event.action as string | null) ?? null, trade_data: (event.trade_data as { instrument?: string; pnl?: number } | null) ?? null })
+              setSilentCount(silentLogRef.current.length)
+            } else if (fullReply) {
+              void speak(fullReply)
+            }
+          } else if (event.type === 'error') {
+            console.error('[buddy] stream error event:', event.message)
+          }
+        }
+      }
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) { flushBuffer(true); break }
+        buffer += decoder.decode(value, { stream: true })
+        flushBuffer()
       }
     } catch (error) {
       console.error('Error:', error)

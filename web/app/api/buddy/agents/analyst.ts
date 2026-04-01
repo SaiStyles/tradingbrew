@@ -88,7 +88,7 @@ ${memories}`
 
     const result = await withRetry(() => anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1000,
+      max_tokens: 300,
       system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
       messages: [
         { role: 'user', content: userContent },

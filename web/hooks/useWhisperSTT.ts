@@ -118,7 +118,7 @@ export function useWhisperSTT({
         positiveSpeechThreshold: 0.5,
         negativeSpeechThreshold: 0.35,
         minSpeechMs: 250,      // discard anything shorter than 250ms — filters keyboard clicks, brief noise
-        redemptionMs: 900,     // wait 900ms of silence before ending — natural conversational pause
+        redemptionMs: 1000,    // wait 1000ms of silence before ending — balance between natural pauses and latency
         preSpeechPadMs: 150,   // 150ms padding before speech starts — avoids clipping the first word
       })
 

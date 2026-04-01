@@ -29,7 +29,7 @@ export async function runExtractor(
 
     const result = await withRetry(() => anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 500,
+      max_tokens: 150,
       system: `You are a data extractor for a trading journal.
 Extract trading information from the user message.
 Return ONLY valid JSON. No explanation. No conversation. Just the JSON object.

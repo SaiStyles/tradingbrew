@@ -1,10 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
-import { NextRequest, NextResponse, after } from 'next/server'
+import { NextRequest, after } from 'next/server'
 import type { ChatMessage, AnalystReport, ExtractedData } from '@/types/trade'
 import { runExtractor } from './agents/extractor'
 import { runContext } from './agents/context'
 import { runAnalyst } from './agents/analyst'
-import { runBuddy } from './agents/buddy'
+import { createBuddyStream, runBuddy } from './agents/buddy'
 import { runSaveDetector } from './agents/save-detector'
 import { runScribe } from './agents/scribe'
 import { runQueryAnalyst } from './agents/query-analyst'
@@ -46,7 +46,9 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (!user) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } })
+    }
 
     const body: unknown = await request.json()
     if (
@@ -54,7 +56,7 @@ export async function POST(request: NextRequest) {
       !('message' in body) ||
       typeof (body as Record<string, unknown>).message !== 'string'
     ) {
-      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+      return new Response(JSON.stringify({ error: 'Invalid request body' }), { status: 400, headers: { 'Content-Type': 'application/json' } })
     }
     const { message } = body as { message: string }
 
@@ -129,7 +131,6 @@ export async function POST(request: NextRequest) {
     const t0 = Date.now()
 
     // Portrait: fetch once per trading day. Supabase cache checked first (free).
-    // Only calls Hindsight reflect() on cache miss. 3s timeout as safety net.
     const portraitPromise = session.trader_portrait
       ? Promise.resolve(session.trader_portrait)
       : Promise.race([
@@ -152,7 +153,6 @@ export async function POST(request: NextRequest) {
     console.log('[agents] extractor + context + portrait:', Date.now() - t0, 'ms', traderPortrait ? '(portrait ready)' : '(no portrait yet)')
 
     // Step 2.5: Query Agent — runs only for historical analysis questions
-    // enrichedContext is immutable — never mutate the original context object
     let enrichedContext = context
     if (extracted.query_type === 'historical_analysis' && extracted.query_subtype !== 'psychology') {
       try {
@@ -166,7 +166,6 @@ export async function POST(request: NextRequest) {
         if (queryResult.needs_sql && queryResult.sql) {
           const { results, error } = await runAnalyticsQuery(user.id, queryResult.sql)
 
-          // Self-correction: if error, retry once with error context
           if (error && error !== 'Only SELECT queries allowed') {
             const retryResult = await runQueryAnalyst({
               question: `${message}\n\n[Previous SQL failed with: ${error}. Fix and regenerate.]`,
@@ -182,7 +181,6 @@ export async function POST(request: NextRequest) {
             enrichedContext = { ...context, historicalQuery: { query_description: queryResult.query_description, results, error } }
           }
         } else {
-          // Psychology-only — no SQL, but mark it so Buddy knows to use memories
           enrichedContext = { ...context, historicalQuery: { query_description: queryResult.query_description, results: [] } }
         }
       } catch (e) {
@@ -190,98 +188,66 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Step 3+4+5: Buddy + Analyst + SaveDetector — all in parallel
+    // Step 3: Build buddy params
     const shouldRunAnalyst = extracted.has_trade || session.messages.length > 0
-    const useHaiku = true // always Haiku — Sonnet escalation removed
     const conversationSoFar: ChatMessage[] = [
       ...session.messages,
       { role: 'user' as const, content: message },
     ].slice(-20)
 
-    const t1 = Date.now()
-    const [buddyReply, analysis, saveResultRaw] = await Promise.all([
-      runBuddy({
-        message,
-        extracted,
-        context: enrichedContext,
-        analysis: session.last_analysis ?? null,
-        messages: session.messages,
-        tradingDate,
-        traderPortrait,
-        user: {
-          buddy_name: (profile?.buddy_name as string | null) ?? 'Brew',
-          buddy_personality: (profile?.buddy_personality as string | null) ?? 'Friendly Mentor',
-          trading_timezone: tradingTimezone,
-        },
-        model: useHaiku ? 'claude-haiku-4-5-20251001' : 'claude-sonnet-4-6',
-      }),
-      shouldRunAnalyst
-        ? runAnalyst(extracted, enrichedContext).catch(() => null)
-        : Promise.resolve(null),
-      (extracted.has_trade || session.messages.length > 0)
-        ? runSaveDetector({ messages: conversationSoFar, extracted, tradingDate, tradingTimezone })
-        : Promise.resolve({ reply: '', save_trade: false, trade_data: null }),
-    ])
-    const saveResult = saveResultRaw
-    console.log('[agents] buddy + analyst + save-detector parallel:', Date.now() - t1, 'ms')
-    console.log('[debug] shouldRunAnalyst:', shouldRunAnalyst, '| has_trade:', extracted.has_trade, '| useHaiku:', useHaiku)
-    console.log('[save-detector] result:', JSON.stringify({ save_trade: saveResult.save_trade, instrument: saveResult.trade_data?.instrument, pnl: saveResult.trade_data?.pnl }))
-    console.log('[agents] total:', Date.now() - t0, 'ms')
-
-    // Step 6: Write rule violations — fire-and-forget
-    if (analysis && analysis.violations && analysis.violations.length > 0) {
-      const currentSessionId = sessionResult.data?.id ?? null
-
-      const violationInserts = analysis.violations.map(v =>
-        supabase.from('rule_violations').insert({
-          rule_id: v.rule_id,
-          user_id: user.id,
-          trade_id: null,
-          session_id: currentSessionId,
-          analyst_reasoning: v.reasoning,
-        })
-      )
-
-      const triggerUpdates = analysis.violations.map(v =>
-        supabase.from('rules')
-          .update({ last_triggered_at: new Date().toISOString() })
-          .eq('id', v.rule_id)
-      )
-
-      Promise.all([
-        ...violationInserts.map(p => Promise.resolve(p)),
-        ...triggerUpdates.map(p => Promise.resolve(p)),
-      ])
-        .then(() => console.log('[violations] writes complete'))
-        .catch(err => console.error('[violations] write failed:', err))
+    const buddyParams = {
+      message,
+      extracted,
+      context: enrichedContext,
+      analysis: session.last_analysis ?? null,
+      messages: session.messages,
+      tradingDate,
+      traderPortrait,
+      user: {
+        buddy_name: (profile?.buddy_name as string | null) ?? 'Brew',
+        buddy_personality: (profile?.buddy_personality as string | null) ?? 'Friendly Mentor',
+        trading_timezone: tradingTimezone,
+      },
+      model: 'claude-haiku-4-5-20251001' as const,
     }
 
-    // Step 7: Scribe — runs after response is sent, guaranteed by next/server after()
+    // Start Analyst + SaveDetector immediately — they run in background while Buddy streams
+    const t1 = Date.now()
+    const analystPromise = shouldRunAnalyst
+      ? runAnalyst(extracted, enrichedContext).catch(() => null)
+      : Promise.resolve(null)
+    const saveDetectorPromise = (extracted.has_trade || session.messages.length > 0)
+      ? runSaveDetector({ messages: conversationSoFar, extracted, tradingDate, tradingTimezone })
+      : Promise.resolve({ reply: '', save_trade: false, trade_data: null })
+
+    // ── Streaming SSE response ──────────────────────────────────────────
+    // Buddy tokens stream to client immediately.
+    // SaveDetector + Analyst run in parallel — usually done by the time streaming finishes.
+    const encoder = new TextEncoder()
+
+    // Register Scribe to run after response is sent.
+    // scribePayload is populated at stream end before controller.close().
+    const scribePayload: {
+      buddyReply: string
+      todayObservations: string[]
+    } = { buddyReply: '', todayObservations: [] }
+
     after(async () => {
+      if (!scribePayload.buddyReply) return
       try {
         const supabaseScribe = await createClient()
 
-        // Fetch today's psychology_log so Scribe sees what it already wrote today
-        const { data: todayLogs } = await supabaseScribe
-          .from('psychology_log')
-          .select('observation')
-          .eq('user_id', user.id)
-          .eq('entry_date', tradingDate)
-          .order('created_at', { ascending: true })
-        const todayObservations = (todayLogs ?? []).map(r => r.observation as string)
-
         const scribeOutput = await runScribe({
           message,
-          buddyReply,
+          buddyReply: scribePayload.buddyReply,
           extracted,
           context: enrichedContext,
           recentMessages: session.messages.slice(-8),
-          existingMemories: [...context.memories, ...todayObservations],
+          existingMemories: [...context.memories, ...scribePayload.todayObservations],
           tradingTimezone,
         })
         if (!scribeOutput.should_write) return
 
-        // Write to Hindsight (patterns/recall) + psychology_log (dated, queryable)
         for (const memory of scribeOutput.memories) {
           await retainMemory(user.id, memory)
           console.log('[scribe] retained to hindsight')
@@ -293,140 +259,223 @@ export async function POST(request: NextRequest) {
             observation: memory,
           })
         }
-
       } catch (err) {
         console.error('[scribe] background failed:', err)
       }
     })
 
-    // Step 8 (was 7): Update conversation history
-    const updatedMessages: ChatMessage[] = [
-      ...session.messages,
-      { role: 'user' as const, content: message },
-      { role: 'assistant' as const, content: buddyReply },
-    ].slice(-20)
+    const stream = new ReadableStream({
+      async start(controller) {
+        let fullReply = ''
 
-    // Step 8: Save trade if SaveDetector decided to
-    const saveDetectorFired = extracted.has_trade || session.messages.length > 0
-    let savedTrade = null
-    let tradeInsertError: string | null = null
-    if (saveResult.save_trade && saveResult.trade_data) {
-      const td = saveResult.trade_data
-      if (td.execution_score != null) {
-        td.execution_score = Math.min(10, Math.max(1, Math.round(td.execution_score)))
-      }
-      console.log('[route] about to save trade, session messages count:', session.messages.length)
-      console.log('[buddy] SAVING TRADE:', JSON.stringify(td, null, 2))
-      try {
-        const closedAt = td.closed_at ?? nowInTz(tradingTimezone)
-        const incomplete = !td.opened_at || !td.direction
-        const currentSessionId = sessionResult.data?.id ?? null
+        try {
+          // Try streaming first
+          const buddyStream = createBuddyStream(buddyParams)
 
-        const { data: insertedTrade, error: insertError } = await supabase
-          .from('trades')
-          .insert({
-            user_id: user.id,
-            session_id: currentSessionId,
-            instrument: td.instrument ?? '',
-            direction: td.direction ?? null,
-            pnl: td.pnl ?? null,
-            position_size: td.position_size ?? null,
-            opened_at: td.opened_at ?? null,
-            closed_at: closedAt,
-            emotion_tag: td.emotion_tag ?? null,
-            execution_score: td.execution_score ?? null,
-            rr: td.rr ?? null,
-            market_condition: extracted.market_condition ?? null,
-            notes: null,
-            followed_plan: td.followed_plan ?? null,
-            incomplete,
-          })
-          .select()
-          .single()
+          if (buddyStream) {
+            for await (const event of buddyStream) {
+              if (
+                event.type === 'content_block_delta' &&
+                event.delta.type === 'text_delta'
+              ) {
+                const text = event.delta.text
+                fullReply += text
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'token', text })}\n\n`))
+              }
+            }
+          } else {
+            // Fallback: no API key — use runBuddy which returns default message
+            fullReply = await runBuddy(buddyParams)
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'token', text: fullReply })}\n\n`))
+          }
 
-        if (insertError) {
-          console.error('[buddy] trade save error:', JSON.stringify(insertError))
-          tradeInsertError = insertError.message
-        } else {
-          console.log('[buddy] trade saved:', insertedTrade?.id)
-          savedTrade = insertedTrade
-          session.last_trade_id = insertedTrade?.id ?? null
-          updatedMessages.push({
-            role: 'user' as const,
-            content: `[SYSTEM: Trade already saved — ${td.instrument} ${td.direction} $${td.pnl} at ${td.opened_at}. Do not save this trade again under any circumstances.]`,
-          })
+          console.log('[agents] buddy streaming done:', Date.now() - t1, 'ms')
+
+          // Await background agents — they ran in parallel with streaming, likely already done
+          const [analysis, saveResultRaw] = await Promise.all([analystPromise, saveDetectorPromise])
+          const saveResult = saveResultRaw
+
+          console.log('[agents] analyst + save-detector done:', Date.now() - t1, 'ms')
+          console.log('[save-detector] result:', JSON.stringify({ save_trade: saveResult.save_trade, instrument: saveResult.trade_data?.instrument, pnl: saveResult.trade_data?.pnl }))
+
+          // Write rule violations — fire-and-forget
+          if (analysis && analysis.violations && analysis.violations.length > 0) {
+            const currentSessionId = sessionResult.data?.id ?? null
+            const violationInserts = analysis.violations.map(v =>
+              supabase.from('rule_violations').insert({
+                rule_id: v.rule_id,
+                user_id: user.id,
+                trade_id: null,
+                session_id: currentSessionId,
+                analyst_reasoning: v.reasoning,
+              })
+            )
+            const triggerUpdates = analysis.violations.map(v =>
+              supabase.from('rules')
+                .update({ last_triggered_at: new Date().toISOString() })
+                .eq('id', v.rule_id)
+            )
+            Promise.all([...violationInserts, ...triggerUpdates])
+              .then(() => console.log('[violations] writes complete'))
+              .catch(err => console.error('[violations] write failed:', err))
+          }
+
+          // Update conversation history
+          const updatedMessages: ChatMessage[] = [
+            ...session.messages,
+            { role: 'user' as const, content: message },
+            { role: 'assistant' as const, content: fullReply },
+          ].slice(-20)
+
+          // Save trade if SaveDetector decided to
+          const saveDetectorFired = extracted.has_trade || session.messages.length > 0
+          let savedTrade = null
+          let tradeInsertError: string | null = null
+          if (saveResult.save_trade && saveResult.trade_data) {
+            const td = saveResult.trade_data
+            if (td.execution_score != null) {
+              td.execution_score = Math.min(10, Math.max(1, Math.round(td.execution_score)))
+            }
+            console.log('[route] about to save trade, session messages count:', session.messages.length)
+            console.log('[buddy] SAVING TRADE:', JSON.stringify(td, null, 2))
+            try {
+              const closedAt = td.closed_at ?? nowInTz(tradingTimezone)
+              const incomplete = !td.opened_at || !td.direction
+              const currentSessionId = sessionResult.data?.id ?? null
+
+              const { data: insertedTrade, error: insertError } = await supabase
+                .from('trades')
+                .insert({
+                  user_id: user.id,
+                  session_id: currentSessionId,
+                  instrument: td.instrument ?? '',
+                  direction: td.direction ?? null,
+                  pnl: td.pnl ?? null,
+                  position_size: td.position_size ?? null,
+                  opened_at: td.opened_at ?? null,
+                  closed_at: closedAt,
+                  emotion_tag: td.emotion_tag ?? null,
+                  execution_score: td.execution_score ?? null,
+                  rr: td.rr ?? null,
+                  market_condition: extracted.market_condition ?? null,
+                  notes: null,
+                  followed_plan: td.followed_plan ?? null,
+                  incomplete,
+                })
+                .select()
+                .single()
+
+              if (insertError) {
+                console.error('[buddy] trade save error:', JSON.stringify(insertError))
+                tradeInsertError = insertError.message
+              } else {
+                console.log('[buddy] trade saved:', insertedTrade?.id)
+                savedTrade = insertedTrade
+                session.last_trade_id = insertedTrade?.id ?? null
+                updatedMessages.push({
+                  role: 'user' as const,
+                  content: `[SYSTEM: Trade already saved — ${td.instrument} ${td.direction} $${td.pnl} at ${td.opened_at}. Do not save this trade again under any circumstances.]`,
+                })
+              }
+            } catch (e) {
+              console.error('[buddy] trade save exception:', e)
+              tradeInsertError = e instanceof Error ? e.message : 'unknown exception'
+            }
+          }
+
+          // Patch late execution_score onto last saved trade
+          if (!saveResult.save_trade && session.last_trade_id && extracted.execution_score != null) {
+            const clamped = Math.min(10, Math.max(1, Math.round(extracted.execution_score)))
+            supabase
+              .from('trades')
+              .update({ execution_score: clamped })
+              .eq('id', session.last_trade_id)
+              .eq('user_id', user.id)
+              .is('execution_score', null)
+              .then(({ error }) => {
+                if (error) console.error('[buddy] execution_score patch failed:', error)
+                else console.log('[buddy] execution_score patched on trade:', session.last_trade_id)
+              })
+          }
+
+          // Populate scribe payload for the after() handler
+          scribePayload.buddyReply = fullReply
+          // Fetch today's psychology_log — fire-and-forget, best effort
+          try {
+            const { data: todayLogs } = await supabase
+              .from('psychology_log')
+              .select('observation')
+              .eq('user_id', user.id)
+              .eq('entry_date', tradingDate)
+              .order('created_at', { ascending: true })
+            scribePayload.todayObservations = (todayLogs ?? []).map(r => r.observation as string)
+          } catch { /* scribe still runs with empty observations */ }
+
+          // Persist session state — fire-and-forget (not critical path)
+          const nextAnalysis = analysis ?? session.last_analysis ?? null
+          const sessionPayload = {
+            messages: updatedMessages,
+            last_analysis: nextAnalysis,
+            session_date: tradingDate,
+            trader_portrait: session.trader_portrait,
+            last_trade_id: session.last_trade_id,
+          }
+          const existingId = sessionResult.data?.id
+          if (existingId && !isNewDay) {
+            supabase
+              .schema('public')
+              .from('sessions')
+              .update({ conversation_state: sessionPayload })
+              .eq('id', existingId)
+              .then(({ error }) => { if (error) console.error('[buddy] session update error:', error) })
+          } else {
+            supabase
+              .schema('public')
+              .from('sessions')
+              .insert({ user_id: user.id, started_at: new Date().toISOString(), conversation_state: sessionPayload })
+              .then(({ error }) => { if (error) console.error('[buddy] session insert error:', error) })
+          }
+
+          console.log('[agents] total:', Date.now() - t0, 'ms')
+
+          // Send done event with metadata
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+            type: 'done',
+            action: saveResult.save_trade ? 'save_trade' : null,
+            trade_data: savedTrade,
+            _debug: {
+              save_detector_fired: saveDetectorFired,
+              save_trade: saveResult.save_trade,
+              session_messages_count: session.messages.length,
+              has_trade: extracted.has_trade,
+              trade_fields_found: saveResult.trade_data ? Object.keys(saveResult.trade_data) : null,
+              ...(tradeInsertError ? { insert_error: tradeInsertError } : {}),
+              ...(savedTrade ? { saved_trade_id: (savedTrade as { id?: string }).id } : {}),
+            },
+          })}\n\n`))
+
+        } catch (err) {
+          console.error('[buddy] stream error:', err)
+          // Send error event so client doesn't hang
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'error', message: 'Something went wrong' })}\n\n`))
+        } finally {
+          controller.close()
         }
-      } catch (e) {
-        console.error('[buddy] trade save exception:', e)
-        tradeInsertError = e instanceof Error ? e.message : 'unknown exception'
       }
-    }
+    })
 
-    // Step 8b: Patch late execution_score onto last saved trade (if trade already saved but score just came in)
-    if (!saveResult.save_trade && session.last_trade_id && extracted.execution_score != null) {
-      const clamped = Math.min(10, Math.max(1, Math.round(extracted.execution_score)))
-      supabase
-        .from('trades')
-        .update({ execution_score: clamped })
-        .eq('id', session.last_trade_id)
-        .eq('user_id', user.id)
-        .is('execution_score', null)
-        .then(({ error }) => {
-          if (error) console.error('[buddy] execution_score patch failed:', error)
-          else console.log('[buddy] execution_score patched on trade:', session.last_trade_id)
-        })
-    }
-
-    // Step 9: Persist session state
-    const nextAnalysis = analysis ?? session.last_analysis ?? null
-    const sessionPayload = {
-      messages: updatedMessages,
-      last_analysis: nextAnalysis,
-      session_date: tradingDate,
-      trader_portrait: session.trader_portrait,
-      last_trade_id: session.last_trade_id,
-    }
-
-    try {
-      const existingId = sessionResult.data?.id
-      if (existingId && !isNewDay) {
-        const { error } = await supabase
-          .schema('public')
-          .from('sessions')
-          .update({ conversation_state: sessionPayload })
-          .eq('id', existingId)
-        if (error) console.error('[buddy] session update error:', error)
-      } else {
-        // Insert new row: either no session exists, or it's a new trading day (preserve old day's record)
-        const { error } = await supabase
-          .schema('public')
-          .from('sessions')
-          .insert({ user_id: user.id, started_at: new Date().toISOString(), conversation_state: sessionPayload })
-        if (error) console.error('[buddy] session insert error:', error)
-      }
-    } catch (e) {
-      console.error('[buddy] session persist exception:', e)
-    }
-
-    // Step 10: Return
-    return NextResponse.json({
-      reply: buddyReply,
-      action: saveResult.save_trade ? 'save_trade' : null,
-      trade_data: savedTrade,
-      _debug: {
-        save_detector_fired: saveDetectorFired,
-        save_trade: saveResult.save_trade,
-        session_messages_count: session.messages.length,
-        has_trade: extracted.has_trade,
-        trade_fields_found: saveResult.trade_data ? Object.keys(saveResult.trade_data) : null,
-        ...(tradeInsertError ? { insert_error: tradeInsertError } : {}),
-        ...(savedTrade ? { saved_trade_id: (savedTrade as { id?: string }).id } : {}),
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no', // disable Nginx buffering
       },
     })
 
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Unknown error'
     console.error('[buddy] orchestrator error:', msg)
-    return NextResponse.json({ error: 'Something went wrong' }, { status: 500 })
+    return new Response(JSON.stringify({ error: 'Something went wrong' }), { status: 500, headers: { 'Content-Type': 'application/json' } })
   }
 }
