@@ -196,6 +196,7 @@ export interface SaveDetectorParams {
   extracted: ExtractedData
   tradingDate: string
   tradingTimezone: string
+  mode?: 'recorder' | 'explorer'
 }
 
 export interface ScribeParams {

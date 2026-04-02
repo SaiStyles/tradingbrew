@@ -1,11 +1,20 @@
 # TradingBrew 🎙️
-> Jarvis for traders. Always live, always watching, speaks before you ask.
+> Just speak. We handle the rest.
 
 ## What This Is
-TradingBrew is a live AI trading companion — not a journal app, not a signal provider.
-Think Tony Stark and Jarvis — the buddy no trader has ever had.
+TradingBrew is a passive AI trading recorder — not a chatbot, not a journal app, not a signal provider.
+Traders speak naturally while they trade. The system listens, logs, analyses, and delivers insights silently.
+Nobody wants to talk to AI. They want to talk to limbo — and have limbo quietly handle everything.
+
+## Core UX — The Recorder
+- **Recorder is the front door** — vintage tape reel animation, mic always listening
+- Trader mumbles trades naturally while watching charts — no commands, no chat
+- Pipeline runs silently in background: extract → save → analyse → observe
+- End of session: summary delivered via Telegram/Discord — no login needed
+- Chat exists but is secondary: pure exploration tool, never for logging
 
 ## What It Is NOT
+- Not a chatbot — nobody asked for that
 - Not signals, not charting, not financial advice
 - Not competing with TradingView, Tradovate, Rithmic, MT4/MT5
 - Not a mobile app (lowest priority, maybe never)
@@ -36,7 +45,15 @@ Think Tony Stark and Jarvis — the buddy no trader has ever had.
 - Agent Parser: shared lib/claude/parser.ts
 - Memory: Hindsight (gen2 agentic memory) — semantic recall, Mental Models, reflect()
 - Database Facts: Supabase PostgreSQL (trades, rules, accounts)
-- Voice: OpenAI Whisper STT (input) + OpenAI tts-1 (output) — LIVE. ElevenLabs later for character voices.
+- Voice: OpenAI Whisper STT (Recorder input only) — LIVE. TTS removed from Chat path (cost + complexity, not worth it).
+  ElevenLabs later for character voices if Recorder ever needs audio feedback.
+- Messaging: Telegram bot for end-of-session summaries — BUILT (Session 17)
+  → /api/telegram (webhook), /api/telegram/connect (GET/DELETE), /api/telegram/summary (POST)
+  → User connects via Settings → Notifications → "Connect Telegram" → one-time token deep link
+  → "End Session" button in Recorder tab sends summary to linked chat
+  → Env vars: TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_NAME, TELEGRAM_WEBHOOK_SECRET
+  → One-time setup: run docs/add-telegram.sql + register webhook (instructions in SQL file)
+  → Discord: free API, same pattern — post-launch if demand exists
 - Deployment: Vercel
 - Desktop: Tauri (5MB, lighter than Electron) — post-launch
 
@@ -52,20 +69,18 @@ Think Tony Stark and Jarvis — the buddy no trader has ever had.
 - Viral hook: combo of character voice + character text = screenshot moments ("greed is good, but that stop loss wasn't")
 - Low cost (Haiku) = low barrier = big user base = acquisition proof for firm sales
 
-## Voice Design
-- Toggle ON/OFF — never always-on without consent
-- Green pulsing indicator when listening, yellow when sound detected
-- Continuous listening when ON
+## Voice Design — Recorder Only
+- Recorder has vintage tape reel animation — circles when speech detected
 - STT: OpenAI Whisper via /api/stt — WAV blobs sent on speech end
-- TTS: OpenAI tts-1 via /api/tts — Web Audio API playback, sentence-parallel fetching
-- VAD: Silero VAD WASM via @ricky0123/vad-web (MicVAD) — ML-based, replaces amplitude SilenceDetector
+- TTS: REMOVED from Chat. No voice replies. Recorder is one-way: speak → silent processing.
+- VAD: Silero VAD WASM via @ricky0123/vad-web (MicVAD) — ML-based
   → positiveSpeechThreshold: 0.5, negativeSpeechThreshold: 0.35
   → minSpeechMs: 250, redemptionMs: 900, preSpeechPadMs: 150
   → Requires COOP/COEP headers (next.config.ts) + ONNX WASM files in /public
   → Dynamic import inside async fn — avoids SSR module resolution failure
-- Interruption: user speech stops TTS immediately (onSpeechStart → audioSourceRef.stop())
-- Voice selector: 6 OpenAI voices in Settings → users.buddy_voice_id
+- Chat tab: text only. No mic, no voice, no TTS. Clean.
 - lib/voice/silenceDetector.ts — DELETED. lib/voice/getMimeType.ts — DELETED.
+- Voice selector in Settings: deprecated (no TTS output to select for)
 
 ## Pricing
 - Launch: FREE — build users first
@@ -124,8 +139,19 @@ tradingbrew/
 
 ## Agent Architecture — 9 Agent Pipeline
 
-**Reactive pipeline** (fires on every user message):
-- Extractor → Context → QueryAnalyst → Analyst + Buddy + SaveDetector (parallel) → Scribe (after())
+**Two distinct pipelines — enforced in route.ts via mode: 'recorder' | 'explorer':**
+
+**Recorder pipeline** (voice input, silent operation):
+- Extractor (lean prompt) → Context → Analyst(bg) + SaveDetector (parallel) → Scribe (after())
+- No Buddy. No portrait fetch. No QueryAnalyst. Trade saves silently.
+- SaveDetector: single-pass, decides on extracted fields alone — no conversation loop.
+- Returns SSE with done event only (no token stream).
+
+**Analyst pipeline** (text input, exploration only):
+- Context → QueryAnalyst (if needed) → Buddy stream → Scribe (after())
+- NO Extractor (uses EXTRACTOR_EMPTY). NO SaveDetector. Never saves trades. Ever.
+- Portrait fetch runs — Buddy needs it.
+- Returns SSE with token stream + done event.
 
 **Proactive pipeline** (fires without user prompting):
 - ProactiveGate + ProactiveBuddy → called on BuddyChat mount + Vercel cron (Phase 2)
@@ -355,10 +381,33 @@ PROACTIVE BUDDY (Haiku) — NEW
      bank-creation calls. Reduced from 2 calls/message to 1 call/session lifetime.
 - ✅ max_tokens reduced — Extractor: 150, Analyst: 300, SaveDetector: 200, Scribe: 300, QueryAnalyst: 400.
      Buddy unchanged (300 regular / 500 with historicalQuery).
+- ✅ Recorder + Analyst UI — BuddyChat split into two tabs. Recorder tab: vintage tape reel SVG,
+     voice input, silent pipeline, recent captures log. Analyst tab: text-only chat, SSE streaming.
+     Toggle at top of card. Defaults to Recorder.
+- ✅ TTS fully removed from Analyst/chat path — text only, no voice output, no AudioContext.
+     All speak/playBuffer/playStreamingSentences/fetchTTSBuffer code deleted from BuddyChat.
+- ✅ Pipeline split by mode — route.ts gates agents by mode: 'recorder' | 'explorer' (internal name).
+     Recorder: Extractor + Context + Analyst(bg) + SaveDetector + Scribe. No Buddy, no portrait.
+     Analyst tab: Context + QueryAnalyst + Buddy stream + Scribe. No Extractor, no SaveDetector.
+- ✅ Portrait fetch gated to Analyst tab only — Recorder skips reflect() entirely. Saves 500ms-2s
+     on first recorder message of the day.
+- ✅ Extractor mode-aware prompt — Recorder gets lean prompt (~40% fewer tokens, no query_type logic).
+     Explorer/Analyst gets full prompt unchanged.
+- ✅ SaveDetector mode-aware prompt — Recorder gets single-pass prompt (extracted fields only,
+     decisive save). Analyst tab: SaveDetector never runs. Explorer never saves trades.
+- ✅ Test suite updated for SSE — route-integration tests now parse SSE stream via parseSSE() helper.
+     122/123 passing (1 pre-existing flaky personality test, unrelated to changes).
+- ⬜ Analyst full DB access — QueryAnalyst currently only handles pattern/performance questions.
+     Needs to answer date-specific queries: "how did I trade on April 1st?" should return
+     trades for that day + psychology_log entries for that date + Scribe observations.
+     Requires: enriching QueryAnalyst schema with psychology_log table, expanding query_type
+     detection to cover date lookups, and feeding psychology_log results alongside trade data
+     into Buddy's context so it can tell the full story of a specific day.
 - ⬜ Streak card on /dashboard hardcoded "0 days" — fix later
-- ⬜ News alerts — DROPPED. News tab is standalone TradingView embed, kept separate from Buddy.
-- ⬜ Silent Mode — built in BuddyChat.tsx (silentModeRef + silentLogRef + surfaceSilentSummary)
-- ⬜ Confession Mode — DROPPED
+- ✅ Telegram end-of-session delivery — BUILT (Session 17)
+     Connect in Settings → Notifications → deep link → /start token → chat_id stored.
+     End Session button in Recorder tab → POST /api/telegram/summary → sends formatted summary.
+     Requires: docs/add-telegram.sql + webhook registration + 3 env vars.
 - ⬜ Tauri desktop app
 
 ## Coding Rules

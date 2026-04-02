@@ -49,25 +49,33 @@ On the trade journal, each trading day has an "AI Note" — a short, warm paragr
 ## Streak Card Fix (Dashboard)
 The "Streak" card on `/dashboard` is hardcoded to "0 days". The real streak computation already exists in `StatsClient.tsx` — copy the logic there. Needs all-time trades query (not just today's trades which the dashboard currently fetches). Low effort, fix whenever.
 
-## ✅ OpenAI TTS — BUILT (Session 14)
-Replaced `window.speechSynthesis` with OpenAI TTS for a human-sounding Buddy voice.
-- /api/tts streams audio/mpeg from OpenAI tts-1 → Web Audio API ArrayBuffer playback
-- 6 selectable voices in Settings → users.buddy_voice_id
-- Sentence-parallel TTS: speak() fires all sentences in parallel, plays in order
-- speakGenRef generation counter prevents concurrent speak() calls from fighting
-- V2: migrate to ElevenLabs Flash for character personality voices (500+ DAU milestone)
+## ✅ OpenAI TTS — BUILT, then scoped down (Session 14→16)
+Built OpenAI tts-1 for Buddy voice. Then removed from Analyst/chat path entirely.
+- TTS now only relevant if Recorder ever needs audio feedback (not planned)
+- /api/tts route still exists but BuddyChat no longer calls it
+- V2: ElevenLabs Flash for character personality voices (500+ DAU milestone)
 
-## ✅ Silent Mode (Focus Mode) — BUILT (Session 13)
-Trader speaks freely while in a session — Buddy listens but never replies. No interruption to flow state.
-- Toggle in BuddyChat: "Silent Mode" — mic stays active, speech-to-text still runs
-- Every utterance goes through the full pipeline (Extractor → Context → Analyst → SaveDetector → Scribe) silently
-- No Buddy response generated or displayed while mode is on
-- When trader exits silent mode → Buddy surfaces a brief summary via surfaceSilentSummary()
-- Tech: silentModeRef + silentLogRef in BuddyChat.tsx — pipeline runs unchanged, response gated on ref
-- **Known issue**: Chrome Web Speech API is unreliable — stuck isSpeakingRef, user gesture chain requirements,
-  recognition instance must be recreated on every onend restart. Voice input may not work reliably until
-  OpenAI Whisper or Deepgram replaces Web Speech STT.
+## ✅ Recorder + Analyst — BUILT (Session 16)
+Core UX pivot: Recorder is the front door. Analyst is the exploration tool.
+- **Recorder tab**: vintage tape reel SVG, pulses on speech, silent pipeline, captures log
+- **Analyst tab**: text-only chat, SSE streaming, QueryAnalyst, Buddy with portrait
+- Toggle at top of one card — defaults to Recorder
+- TTS fully removed from Analyst tab — text only, zero voice output
+- Pipeline enforced by mode in route.ts — Recorder never runs Buddy, Analyst never saves trades
+- Recorder optimisations: lean Extractor prompt, single-pass SaveDetector, no portrait fetch
+- **Philosophy**: Nobody wants to talk to AI. They want to talk to limbo. Recorder IS limbo.
 
+
+## ✅ Telegram End-of-Session Delivery — BUILT (Session 17)
+Summary pushed to trader's Telegram when they tap "End Session" in the Recorder tab.
+- Webhook: /api/telegram (POST) — receives /start {token}, links chat_id to user
+- Connect: /api/telegram/connect (GET generates token+deep link, DELETE disconnects)
+- Summary: /api/telegram/summary (POST) — queries today's trades, formats, sends
+- Settings: Notifications tab has "Connect Telegram" widget with Telegram deep link
+- BuddyChat Recorder: "End Session" button appears after first capture
+- Message format: instrument · P&L · emotion · execution score per trade
+- Requires: docs/add-telegram.sql + webhook registration + TELEGRAM_BOT_TOKEN/BOT_NAME/WEBHOOK_SECRET
+- Discord: same pattern, post-launch if demand
 
 ## ✅ Pipeline Latency Optimization — BUILT (Session 15)
 Reduced text response from ~11s to ~0.5s TTFT. Voice first-audio from ~13s to ~2-3s.

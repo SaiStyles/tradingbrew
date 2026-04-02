@@ -1068,6 +1068,121 @@ const NOTIF_ITEMS: {
   },
 ]
 
+function TelegramConnectSection({ showToast }: { showToast: (type: 'success' | 'error', message: string) => void }) {
+  const [status, setStatus] = useState<'loading' | 'connected' | 'disconnected'>('loading')
+  const [botLink, setBotLink] = useState<string | null>(null)
+  const [disconnecting, setDisconnecting] = useState(false)
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch('/api/telegram/connect')
+        if (!res.ok) { setStatus('disconnected'); return }
+        const data = await res.json() as { connected: boolean; bot_link?: string }
+        if (data.connected) {
+          setStatus('connected')
+        } else {
+          setStatus('disconnected')
+          if (data.bot_link) setBotLink(data.bot_link)
+        }
+      } catch {
+        setStatus('disconnected')
+      }
+    })()
+  }, [])
+
+  async function handleConnect() {
+    try {
+      const res = await fetch('/api/telegram/connect')
+      if (!res.ok) { showToast('error', 'Failed to generate link'); return }
+      const data = await res.json() as { connected: boolean; bot_link?: string }
+      if (data.connected) { setStatus('connected'); return }
+      if (data.bot_link) setBotLink(data.bot_link)
+    } catch {
+      showToast('error', 'Failed to generate link')
+    }
+  }
+
+  async function handleDisconnect() {
+    setDisconnecting(true)
+    try {
+      const res = await fetch('/api/telegram/connect', { method: 'DELETE' })
+      if (!res.ok) throw new Error()
+      setStatus('disconnected')
+      setBotLink(null)
+      showToast('success', 'Telegram disconnected')
+    } catch {
+      showToast('error', 'Failed to disconnect')
+    } finally {
+      setDisconnecting(false)
+    }
+  }
+
+  return (
+    <div className="mt-8">
+      <div className="mb-3">
+        <h3 className="text-base font-semibold text-white">Telegram Delivery</h3>
+        <p className="text-zinc-500 text-sm mt-0.5">
+          Get your session summary sent to Telegram when you end a session.
+        </p>
+      </div>
+
+      <div className="p-4 bg-zinc-900 border border-zinc-800 rounded-xl">
+        {status === 'loading' && (
+          <p className="text-zinc-500 text-sm">Checking connection...</p>
+        )}
+
+        {status === 'connected' && (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-green-400 inline-block" />
+              <span className="text-white text-sm font-medium">Connected</span>
+              <span className="text-zinc-500 text-xs">Summaries will be sent to your Telegram</span>
+            </div>
+            <button
+              onClick={() => void handleDisconnect()}
+              disabled={disconnecting}
+              className="text-xs text-zinc-500 hover:text-red-400 transition-colors disabled:opacity-50"
+            >
+              {disconnecting ? 'Disconnecting...' : 'Disconnect'}
+            </button>
+          </div>
+        )}
+
+        {status === 'disconnected' && !botLink && (
+          <div className="flex items-center justify-between">
+            <p className="text-zinc-400 text-sm">Not connected</p>
+            <button
+              onClick={() => void handleConnect()}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              Connect Telegram
+            </button>
+          </div>
+        )}
+
+        {status === 'disconnected' && botLink && (
+          <div className="space-y-3">
+            <p className="text-zinc-400 text-sm">Click the button below to open Telegram and connect your account:</p>
+            <a
+              href={botLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#0088cc] hover:bg-[#0077b5] text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.833.941z"/>
+              </svg>
+              Open Telegram
+            </a>
+            <p className="text-zinc-600 text-xs">After connecting, refresh this page to see your status.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function NotificationsTab({
   initialSettings,
   showToast,
@@ -1129,6 +1244,8 @@ function NotificationsTab({
             />
           </div>
         ))}
+
+        <TelegramConnectSection showToast={showToast} />
       </div>
 
       {/* Save footer */}

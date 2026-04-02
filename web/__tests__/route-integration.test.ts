@@ -99,12 +99,33 @@ function makeMockSupabase(sessionState: Record<string, unknown> | null = null) {
 
 // ─── Request helper ───────────────────────────────────────────────────────────
 
-function makeRequest(message: string): NextRequest {
+function makeRequest(message: string, mode: 'recorder' | 'explorer' = 'explorer'): NextRequest {
   return new NextRequest('http://localhost:3000/api/buddy', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, mode }),
   })
+}
+
+// Parse SSE stream → { reply, action, trade_data }
+async function parseSSE(res: Response): Promise<{ reply: string; action: string | null; trade_data: Record<string, unknown> | null }> {
+  const text = await res.text()
+  let reply = ''
+  let action: string | null = null
+  let trade_data: Record<string, unknown> | null = null
+
+  for (const line of text.split('\n')) {
+    if (!line.startsWith('data: ')) continue
+    let event: Record<string, unknown>
+    try { event = JSON.parse(line.slice(6).trim()) as Record<string, unknown> }
+    catch { continue }
+    if (event.type === 'token' && typeof event.text === 'string') reply += event.text
+    if (event.type === 'done') {
+      action = (event.action as string | null) ?? null
+      trade_data = (event.trade_data as Record<string, unknown> | null) ?? null
+    }
+  }
+  return { reply, action, trade_data }
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -136,9 +157,9 @@ describe('Route integration — full pipeline', () => {
   })
 
   it('small talk returns reply, no save_trade', async () => {
-    const res = await POST(makeRequest('gm bro'))
+    const res = await POST(makeRequest('gm bro', 'explorer'))
     expect(res.status).toBe(200)
-    const body = await res.json()
+    const body = await parseSSE(res)
     console.log('[route-test: small talk] reply:', body.reply?.slice(0, 80))
     expect(typeof body.reply).toBe('string')
     expect(body.reply.length).toBeGreaterThan(0)
@@ -148,34 +169,30 @@ describe('Route integration — full pipeline', () => {
 
   it('full trade in one message → save_trade fires, trade_data returned', async () => {
     const res = await POST(makeRequest(
-      'just closed NQ short, lost $450, entered at 9:30am, felt like FOMO the whole time'
+      'just closed NQ short, lost $450, entered at 9:30am, felt like FOMO the whole time',
+      'recorder'
     ))
     expect(res.status).toBe(200)
-    const body = await res.json()
+    const body = await parseSSE(res)
     console.log('[route-test: full trade] action:', body.action, '| trade_data:', JSON.stringify(body.trade_data))
-    console.log('[route-test: full trade] reply:', body.reply?.slice(0, 120))
-    // SaveDetector may or may not save based on full conversation context
-    // Regardless, reply must always be present
-    expect(typeof body.reply).toBe('string')
-    expect(body.reply.length).toBeGreaterThan(0)
+    // Recorder returns no reply — just done event
     if (body.action === 'save_trade') {
       expect(body.trade_data).toBeDefined()
-      expect(body.trade_data.instrument).toBeTruthy()
+      expect((body.trade_data as Record<string, unknown>)?.instrument).toBeTruthy()
     }
   }, 35000)
 
   it('incomplete trade message → no save, buddy asks follow-up', async () => {
-    const res = await POST(makeRequest('traded NQ today, lost some money'))
+    const res = await POST(makeRequest('traded NQ today, lost some money', 'explorer'))
     expect(res.status).toBe(200)
-    const body = await res.json()
+    const body = await parseSSE(res)
     console.log('[route-test: incomplete] action:', body.action, '| reply:', body.reply?.slice(0, 120))
     expect(typeof body.reply).toBe('string')
-    // Should not save — missing direction, exact pnl, opened_at, emotion
+    // Explorer never saves — no SaveDetector
     expect(body.action).toBeNull()
   }, 30000)
 
   it('with existing session context — buddy references prior state', async () => {
-    // Simulate a session that already has messages
     const sessionState = {
       messages: [
         { role: 'user', content: 'took a long on NQ earlier' },
@@ -189,13 +206,12 @@ describe('Route integration — full pipeline', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ;(createClient as any).mockResolvedValue(makeMockSupabase(sessionState))
 
-    const res = await POST(makeRequest('made 300 on it, felt calm'))
+    const res = await POST(makeRequest('made 300 on it, felt calm', 'explorer'))
     expect(res.status).toBe(200)
-    const body = await res.json()
+    const body = await parseSSE(res)
     console.log('[route-test: with session] reply:', body.reply?.slice(0, 120))
-    console.log('[route-test: with session] action:', body.action)
     expect(typeof body.reply).toBe('string')
-    // May save — has prior context + new pnl/emotion, opened_at still needed
+    expect(body.reply.length).toBeGreaterThan(0)
   }, 35000)
 
 })

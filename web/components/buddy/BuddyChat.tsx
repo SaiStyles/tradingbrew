@@ -4,176 +4,125 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useWhisperSTT } from '@/hooks/useWhisperSTT'
 import { createClient } from '@/lib/supabase/client'
 
-// Split text into sentences so we can fire TTS requests in parallel
-// and start playing sentence 1 while sentence 2 is still being fetched.
-function splitSentences(text: string): string[] {
-  // Split after .!? followed by whitespace + capital letter/digit/quote
-  const parts = text.split(/(?<=[.!?])\s+(?=[A-Z"'\d])/)
-  return parts.map(s => s.trim()).filter(s => s.length > 0)
-}
-
-// During streaming: extract complete sentences from a growing buffer.
-// Returns complete sentences ready for TTS + the leftover incomplete fragment.
-function extractCompleteSentences(text: string): { complete: string[]; remaining: string } {
-  const parts = text.split(/(?<=[.!?])\s+(?=[A-Z"'\d])/)
-  if (parts.length <= 1) return { complete: [], remaining: text }
-  const complete = parts.slice(0, -1).map(s => s.trim()).filter(Boolean)
-  const remaining = (parts[parts.length - 1] ?? '').trim()
-  return { complete, remaining }
-}
-
 type Message = {
   role: 'user' | 'buddy'
   content: string
   timestamp: Date
 }
 
-type SilentLogEntry = {
-  action: string | null
-  trade_data: { instrument?: string; pnl?: number } | null
+type RecorderEntry = {
+  text: string
+  instrument?: string
+  pnl?: number
+  saved: boolean
 }
 
-export default function BuddyChat({ buddyName, buddyVoice }: { buddyName: string; buddyVoice?: string }) {
+type RecorderStatus = 'idle' | 'listening' | 'recording' | 'processing'
+
+// Tape reel SVG — vintage audio recorder aesthetic
+// Rings pulse on sound, slow spin on hub when active
+function TapeReel({ isActive, soundDetected, isTranscribing, isProcessing }: {
+  isActive: boolean
+  soundDetected: boolean
+  isTranscribing: boolean
+  isProcessing: boolean
+}) {
+  const color = isProcessing ? '#3b82f6' : isActive ? '#22c55e' : '#3f3f46'
+  const fillDim = isProcessing ? '#1e3a5f20' : isActive ? '#14532d20' : '#18181b'
+  const holeFill = isProcessing ? '#1e3a8a' : isActive ? '#166534' : '#18181b'
+
+  return (
+    <div className="relative flex items-center justify-center">
+      {/* Outer pulse rings — only when sound detected */}
+      {(soundDetected || isProcessing) && (
+        <>
+          <div
+            className="absolute rounded-full border animate-ping"
+            style={{ width: 160, height: 160, borderColor: `${color}40` }}
+          />
+          <div
+            className="absolute rounded-full border animate-ping"
+            style={{ width: 180, height: 180, borderColor: `${color}20`, animationDelay: '200ms' }}
+          />
+        </>
+      )}
+
+      <svg width="140" height="140" viewBox="0 0 140 140" className="relative z-10">
+        {/* Outermost decorative ring */}
+        <circle cx="70" cy="70" r="67"
+          fill="none"
+          stroke={isActive ? `${color}30` : '#1c1c1e'}
+          strokeWidth="1"
+        />
+        {/* Main reel body */}
+        <circle cx="70" cy="70" r="60"
+          fill={fillDim}
+          stroke={color}
+          strokeWidth="1.5"
+          className={soundDetected ? 'animate-pulse' : ''}
+        />
+        {/* Spoke lines — like a real reel */}
+        {[0, 60, 120, 180, 240, 300].map(deg => {
+          const rad = deg * Math.PI / 180
+          return (
+            <line
+              key={deg}
+              x1={70 + 28 * Math.cos(rad)} y1={70 + 28 * Math.sin(rad)}
+              x2={70 + 55 * Math.cos(rad)} y2={70 + 55 * Math.sin(rad)}
+              stroke={isActive ? `${color}40` : '#27272a'}
+              strokeWidth="1"
+            />
+          )
+        })}
+        {/* Inner hub */}
+        <circle cx="70" cy="70" r="26"
+          fill={isActive ? `${color}15` : '#27272a'}
+          stroke={isActive ? `${color}80` : '#3f3f46'}
+          strokeWidth="1.5"
+        />
+        {/* 3 reel holes at 120° intervals */}
+        {[0, 120, 240].map(deg => {
+          const rad = (deg - 90) * Math.PI / 180
+          return (
+            <circle
+              key={deg}
+              cx={70 + 14 * Math.cos(rad)}
+              cy={70 + 14 * Math.sin(rad)}
+              r="5"
+              fill={holeFill}
+              stroke={color}
+              strokeWidth="1"
+            />
+          )
+        })}
+        {/* Center spindle */}
+        <circle cx="70" cy="70" r="7" fill={color} />
+        <circle cx="70" cy="70" r="3" fill={fillDim} />
+      </svg>
+    </div>
+  )
+}
+
+export default function BuddyChat({ buddyName }: { buddyName: string }) {
+  // ── Explorer state ──────────────────────────────────────
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [proactiveLoading, setProactiveLoading] = useState(true) // true until session opener resolves
-  const [isSpeaking, setIsSpeaking] = useState(false)
-  const [silentMode, setSilentMode] = useState(false)
-  const [silentCount, setSilentCount] = useState(0)
+  const [proactiveLoading, setProactiveLoading] = useState(true)
+
+  // ── Recorder state ─────────────────────────────────────
+  const [recorderEntries, setRecorderEntries] = useState<RecorderEntry[]>([])
+  const [recorderStatus, setRecorderStatus] = useState<RecorderStatus>('idle')
+  const [activeTab, setActiveTab] = useState<'recorder' | 'explorer'>('recorder')
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const isSpeakingRef = useRef(false)
-  const silentModeRef = useRef(false)
-  const openerFiredRef = useRef(false) // prevents re-firing when speak/buddyVoice refs change
-  const speakRef = useRef<(text: string) => Promise<void>>(async () => {})
-  const silentLogRef = useRef<SilentLogEntry[]>([])
-  const audioCtxRef = useRef<AudioContext | null>(null)
-  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null)
-  // Incremented every time speak() is called — older calls check this and exit early
-  const speakGenRef = useRef(0)
+  const openerFiredRef = useRef(false)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Fetch a single TTS chunk — returns ArrayBuffer or null on failure
-  const fetchTTSBuffer = useCallback(async (sentence: string): Promise<ArrayBuffer | null> => {
-    try {
-      const res = await fetch('/api/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: sentence, voice: buddyVoice || 'nova' }),
-      })
-      if (!res.ok) return null
-      return await res.arrayBuffer()
-    } catch {
-      return null
-    }
-  }, [buddyVoice])
-
-  // Play a single ArrayBuffer through the AudioContext — resolves when playback ends
-  const playBuffer = useCallback((arrayBuffer: ArrayBuffer): Promise<void> =>
-    new Promise((resolve) => {
-      if (!isSpeakingRef.current) { resolve(); return }
-      const run = async () => {
-        try {
-          if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
-            audioCtxRef.current = new AudioContext()
-          }
-          if (audioCtxRef.current.state === 'suspended') {
-            await audioCtxRef.current.resume()
-          }
-          const audioBuffer = await audioCtxRef.current.decodeAudioData(arrayBuffer)
-          if (!isSpeakingRef.current) { resolve(); return }
-          const source = audioCtxRef.current.createBufferSource()
-          source.buffer = audioBuffer
-          source.connect(audioCtxRef.current.destination)
-          audioSourceRef.current = source
-          source.onended = () => resolve()
-          source.start()
-        } catch { resolve() }
-      }
-      void run()
-    })
-  , [])
-
-  // Sentence-chunked TTS: all fetches fire in parallel, audio plays in order.
-  // Sentence 2 is usually ready before sentence 1 finishes — near-zero gap.
-  // Generation counter prevents two concurrent speak() calls from fighting:
-  // new call stops the old audio node (which resolves its playBuffer promise),
-  // then the old call sees its gen is stale and exits.
-  const speak = useCallback(async (text: string) => {
-    const myGen = ++speakGenRef.current
-
-    try { audioSourceRef.current?.stop() } catch { /* already stopped */ }
-
-    isSpeakingRef.current = true
-    setIsSpeaking(true)
-
-    try {
-      const sentences = splitSentences(text)
-      // Fire all TTS requests immediately in parallel
-      const bufferPromises = sentences.map(s => fetchTTSBuffer(s))
-
-      for (const promise of bufferPromises) {
-        if (!isSpeakingRef.current || speakGenRef.current !== myGen) break
-        const buf = await promise
-        if (!buf || !isSpeakingRef.current || speakGenRef.current !== myGen) break
-        await playBuffer(buf)
-      }
-    } finally {
-      // Only the most-recent call clears the speaking flag
-      if (speakGenRef.current === myGen) {
-        isSpeakingRef.current = false
-        setIsSpeaking(false)
-      }
-    }
-  }, [fetchTTSBuffer, playBuffer])
-
-  // Streaming TTS: plays an ordered array of TTS fetch promises that grows live.
-  // Starts as soon as the first sentence is ready — doesn't wait for full reply.
-  // streamState.done = true signals that no more sentences will be added.
-  const playStreamingSentences = useCallback(async (
-    promises: Promise<ArrayBuffer | null>[],
-    streamState: { done: boolean }
-  ) => {
-    const myGen = ++speakGenRef.current
-    try { audioSourceRef.current?.stop() } catch { /* already stopped */ }
-    isSpeakingRef.current = true
-    setIsSpeaking(true)
-
-    try {
-      let i = 0
-      while (true) {
-        if (i < promises.length) {
-          if (!isSpeakingRef.current || speakGenRef.current !== myGen) break
-          const buf = await promises[i]
-          if (!buf || !isSpeakingRef.current || speakGenRef.current !== myGen) break
-          await playBuffer(buf)
-          i++
-        } else if (streamState.done) {
-          break  // stream finished and all sentences played
-        } else {
-          // Stream still active — wait briefly for next sentence to arrive
-          await new Promise(r => setTimeout(r, 50))
-        }
-      }
-    } finally {
-      if (speakGenRef.current === myGen) {
-        isSpeakingRef.current = false
-        setIsSpeaking(false)
-      }
-    }
-  }, [playBuffer])
-
-  // Keep speakRef current so the opener can call the latest speak without it being a dep
-  useEffect(() => { speakRef.current = speak }, [speak])
-
-  // Session opener: Buddy speaks first on mount — the Jarvis moment
-  // Calls proactive API, which runs ProactiveGate + ProactiveBuddy and returns a personalised greeting.
-  // Falls back to generic greeting if API returns null or errors.
-  // openerFiredRef prevents re-firing when buddyVoice loads async and causes speak to change reference.
+  // Session opener → Explorer (text only, no TTS)
   useEffect(() => {
     if (openerFiredRef.current) return
     openerFiredRef.current = true
@@ -184,16 +133,11 @@ export default function BuddyChat({ buddyName, buddyVoice }: { buddyName: string
         const res = await fetch('/api/buddy/proactive?trigger=session_start')
         const data = await res.json() as { message: string | null }
         if (cancelled) return
-
-        const openerMessage = data.message ?? `Hey! I'm ${buddyName}. Here with you for the session. How's it looking today?`
-        setMessages([{ role: 'buddy', content: openerMessage, timestamp: new Date() }])
-
-        if (data.message) {
-          void speakRef.current(data.message)
-        }
+        const msg = data.message ?? `Hey! I'm ${buddyName}. Ask me anything about your trading.`
+        setMessages([{ role: 'buddy', content: msg, timestamp: new Date() }])
       } catch {
         if (!cancelled) {
-          setMessages([{ role: 'buddy', content: `Hey! I'm ${buddyName}. Here with you for the session. How's it looking today?`, timestamp: new Date() }])
+          setMessages([{ role: 'buddy', content: `Hey! I'm ${buddyName}. Ask me anything about your trading.`, timestamp: new Date() }])
         }
       } finally {
         if (!cancelled) setProactiveLoading(false)
@@ -204,9 +148,7 @@ export default function BuddyChat({ buddyName, buddyVoice }: { buddyName: string
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Phase 2: Supabase Realtime — receives cron-triggered proactive messages (intervene, debrief, etc.)
-  // Fires when the cron job inserts a row into proactive_queue for this user.
-  // Gracefully no-ops if the table doesn't exist yet (before SQL migration is run).
+  // Phase 2: Supabase Realtime proactive push → Explorer
   useEffect(() => {
     const supabase = createClient()
     const channel = supabase
@@ -220,88 +162,90 @@ export default function BuddyChat({ buddyName, buddyVoice }: { buddyName: string
           const row = payload?.new as { id: string; message: string; delivered: boolean } | null
           if (!row?.message || row.delivered) return
           setMessages(prev => [...prev, { role: 'buddy', content: row.message, timestamp: new Date() }])
-          void speak(row.message)
-          supabase
-            .from('proactive_queue')
-            .update({ delivered: true })
-            .eq('id', row.id)
-            .then(() => {})
+          supabase.from('proactive_queue').update({ delivered: true }).eq('id', row.id).then(() => {})
         }
       )
       .subscribe()
-
     return () => { void supabase.removeChannel(channel) }
-  }, [speak])
+  }, [])
 
-  const surfaceSilentSummary = () => {
-    const log = silentLogRef.current
-    silentLogRef.current = []
-    setSilentCount(0)
-    if (log.length === 0) return
+  // ── Recorder: voice → recorder pipeline (silent) ────────
+  const handleRecorderTranscript = useCallback(async (text: string) => {
+    setRecorderStatus('processing')
+    try {
+      const res = await fetch('/api/buddy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, mode: 'recorder' }),
+      })
+      if (!res.ok || !res.body) { setRecorderStatus('listening'); return }
 
-    const saved = log.filter(e => e.action === 'save_trade').length
-    const flagged = log.filter(e => e.action !== null && e.action !== 'save_trade').length
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
 
-    let summary = `Back. Logged ${saved} trade${saved !== 1 ? 's' : ''} across ${log.length} message${log.length !== 1 ? 's' : ''}`
-    if (flagged > 0) summary += `, ${flagged} flagged`
-    else summary += ', nothing flagged'
-    summary += '.'
+      while (true) {
+        const { done, value } = await reader.read()
+        buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done })
+        const lines = buffer.split('\n')
+        buffer = done ? '' : (lines.pop() ?? '')
 
-    setMessages(prev => [...prev, { role: 'buddy', content: summary, timestamp: new Date() }])
-    void speak(summary)
-  }
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          let event: Record<string, unknown>
+          try { event = JSON.parse(line.slice(6).trim()) as Record<string, unknown> }
+          catch { continue }
+
+          if (event.type === 'done') {
+            const td = event.trade_data as { instrument?: string; pnl?: number } | null
+            setRecorderEntries(prev => [
+              {
+                text,
+                instrument: td?.instrument,
+                pnl: td?.pnl,
+                saved: event.action === 'save_trade',
+              },
+              ...prev,
+            ].slice(0, 8))
+          }
+        }
+        if (done) break
+      }
+    } catch { /* silent — recorder never shows errors */ }
+    finally { setRecorderStatus('listening') }
+  }, [])
 
   const stt = useWhisperSTT({
-    onTranscript: (text) => {
-      // Interruption: user speaks while Buddy is talking — stop TTS, process speech
-      if (isSpeakingRef.current) {
-        try { audioSourceRef.current?.stop() } catch { /* already stopped */ }
-        isSpeakingRef.current = false
-        setIsSpeaking(false)
-      }
-      void sendMessage(text)
-    },
+    onTranscript: handleRecorderTranscript,
     onSpeechStart: () => {
-      // Immediate TTS stop when Silero VAD detects real speech — not noise/keyboard
-      if (isSpeakingRef.current) {
-        try { audioSourceRef.current?.stop() } catch { /* already stopped */ }
-        isSpeakingRef.current = false
-        setIsSpeaking(false)
-      }
+      if (recorderStatus === 'listening') setRecorderStatus('recording')
     },
-    shouldSuppress: () => isSpeakingRef.current,
   })
 
-  const toggleSilentMode = () => {
-    if (!stt.isListening) return
-    const next = !silentModeRef.current
-    silentModeRef.current = next
-    setSilentMode(next)
-    if (!next) surfaceSilentSummary()
+  const toggleRecorder = () => {
+    if (stt.isListening) {
+      stt.stop()
+      setRecorderStatus('idle')
+    } else {
+      stt.start()
+      setRecorderStatus('listening')
+    }
   }
 
-  const sendMessage = async (text: string) => {
-    if (!text.trim()) return
-    const isSilent = silentModeRef.current
-
-    if (!isSilent) setLoading(true)
-    if (!isSilent) {
-      setMessages(prev => [...prev, { role: 'user', content: text, timestamp: new Date() }])
-    }
+  // ── Explorer: text → chat pipeline ─────────────────────
+  const sendExplorerMessage = async (text: string) => {
+    if (!text.trim() || loading) return
+    setLoading(true)
+    setMessages(prev => [...prev, { role: 'user', content: text, timestamp: new Date() }])
     setInput('')
 
     try {
       const res = await fetch('/api/buddy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ message: text, mode: 'explorer' }),
       })
-
-      if (!res.ok || !res.body) {
-        console.error('[buddy] response error:', res.status)
-        if (!isSilent) setLoading(false)
-        return
-      }
+      if (!res.ok || !res.body) { setLoading(false); return }
 
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
@@ -309,208 +253,198 @@ export default function BuddyChat({ buddyName, buddyVoice }: { buddyName: string
       let fullReply = ''
       let msgAdded = false
 
-      // Streaming TTS state — populated as sentences complete during streaming
-      const ttsState = { done: false }
-      const ttsPromises: Promise<ArrayBuffer | null>[] = []
-      let ttsBuffer = ''   // text waiting for next sentence boundary
-      let ttsStarted = false
-
-      const flushBuffer = (done = false) => {
+      while (true) {
+        const { done, value } = await reader.read()
+        buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done })
         const lines = buffer.split('\n')
-        // Keep incomplete last line unless we're done
         buffer = done ? '' : (lines.pop() ?? '')
 
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue
-          const raw = line.slice(6).trim()
-          if (!raw) continue
-
           let event: Record<string, unknown>
-          try { event = JSON.parse(raw) as Record<string, unknown> }
+          try { event = JSON.parse(line.slice(6).trim()) as Record<string, unknown> }
           catch { continue }
 
           if (event.type === 'token' && typeof event.text === 'string') {
             fullReply += event.text
-            if (!isSilent) {
-              if (!msgAdded) {
-                // Add the placeholder buddy message
-                setMessages(prev => [...prev, { role: 'buddy', content: fullReply, timestamp: new Date() }])
-                msgAdded = true
-              } else {
-                // Update the last message in place
-                setMessages(prev => {
-                  const copy = [...prev]
-                  copy[copy.length - 1] = { ...copy[copy.length - 1], content: fullReply }
-                  return copy
-                })
-              }
-
-              // TTS during streaming: fire fetch as each sentence completes
-              ttsBuffer += event.text
-              const { complete, remaining } = extractCompleteSentences(ttsBuffer)
-              ttsBuffer = remaining
-              for (const sentence of complete) {
-                ttsPromises.push(fetchTTSBuffer(sentence))
-                if (!ttsStarted) {
-                  ttsStarted = true
-                  void playStreamingSentences(ttsPromises, ttsState)
-                }
-              }
-            }
-          } else if (event.type === 'done') {
-            if (isSilent) {
-              silentLogRef.current.push({ action: (event.action as string | null) ?? null, trade_data: (event.trade_data as { instrument?: string; pnl?: number } | null) ?? null })
-              setSilentCount(silentLogRef.current.length)
+            if (!msgAdded) {
+              setMessages(prev => [...prev, { role: 'buddy', content: fullReply, timestamp: new Date() }])
+              msgAdded = true
             } else {
-              // Flush any remaining text that didn't end with sentence boundary
-              if (ttsBuffer.trim()) {
-                ttsPromises.push(fetchTTSBuffer(ttsBuffer))
-                ttsBuffer = ''
-              }
-              ttsState.done = true
-              // If no sentence boundary was ever hit (very short reply), start player now
-              if (!ttsStarted && ttsPromises.length > 0) {
-                void playStreamingSentences(ttsPromises, ttsState)
-              }
+              setMessages(prev => {
+                const copy = [...prev]
+                copy[copy.length - 1] = { ...copy[copy.length - 1], content: fullReply }
+                return copy
+              })
             }
-          } else if (event.type === 'error') {
-            console.error('[buddy] stream error event:', event.message)
           }
         }
+        if (done) break
       }
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) { flushBuffer(true); break }
-        buffer += decoder.decode(value, { stream: true })
-        flushBuffer()
-      }
-    } catch (error) {
-      console.error('Error:', error)
-    } finally {
-      if (!isSilent) setLoading(false)
-    }
+    } catch { /* handled */ }
+    finally { setLoading(false) }
   }
 
-  const toggleListening = () => {
-    if (stt.isListening) {
-      if (silentModeRef.current) {
-        silentModeRef.current = false
-        setSilentMode(false)
-        surfaceSilentSummary()
-      }
-      stt.stop()
-    } else {
-      stt.start()
+  const isProcessing = recorderStatus === 'processing' || stt.isTranscribing
+
+  // ── End Session ────────────────────────────────────────
+  const [sessionSent, setSessionSent] = useState<'idle' | 'sending' | 'sent' | 'no_telegram'>('idle')
+
+  const handleEndSession = useCallback(async () => {
+    setSessionSent('sending')
+    try {
+      const res = await fetch('/api/telegram/summary', { method: 'POST' })
+      if (!res.ok) { setSessionSent('idle'); return }
+      const data = await res.json() as { sent: boolean; reason?: string }
+      setSessionSent(data.sent ? 'sent' : 'no_telegram')
+      if (data.sent) setTimeout(() => setSessionSent('idle'), 4000)
+    } catch {
+      setSessionSent('idle')
     }
-  }
+  }, [])
 
   return (
     <div className="flex flex-col h-full bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
 
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
-        <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full transition-colors ${
-            silentMode ? 'bg-violet-500 animate-pulse' :
-            stt.soundDetected ? 'bg-yellow-400 animate-pulse' :
-            stt.isListening ? 'bg-green-400 animate-pulse' :
-            'bg-zinc-600'
-          }`} />
-          <span className="text-white text-sm font-medium">{buddyName}</span>
-          {isSpeaking && <span className="text-zinc-500 text-xs">speaking...</span>}
-          {stt.isTranscribing && <span className="text-blue-400 text-xs">thinking...</span>}
-          {stt.soundDetected && !silentMode && <span className="text-yellow-400 text-xs">hearing you...</span>}
-          {silentMode && <span className="text-violet-400 text-xs">silent — still listening</span>}
-        </div>
-        <div className="flex items-center gap-2">
-          {stt.isListening && (
-            <button
-              onClick={toggleSilentMode}
-              className={`text-xs px-3 py-1 rounded-full transition ${
-                silentMode
-                  ? 'bg-violet-500/20 text-violet-400 border border-violet-500/30'
-                  : 'bg-zinc-800 text-zinc-400 border border-zinc-700 hover:text-white'
-              }`}
-            >
-              {silentMode ? `Silent (${silentCount})` : 'Silent'}
-            </button>
-          )}
-          <button
-            onClick={toggleListening}
-            className={`text-xs px-3 py-1 rounded-full transition ${
-              stt.isListening
-                ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
-            }`}
-          >
-            {stt.isListening ? '🎤 Listening' : '🎤 Voice Off'}
+      {/* ── Toggle ─────────────────────────────────────────── */}
+      <div className="flex items-center gap-1 p-2 border-b border-zinc-800 flex-shrink-0">
+        <button
+          onClick={() => setActiveTab('recorder')}
+          className={`flex-1 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === 'recorder'
+              ? 'bg-zinc-700 text-white'
+              : 'text-zinc-500 hover:text-zinc-300'
+          }`}
+        >
+          Recorder
+        </button>
+        <button
+          onClick={() => setActiveTab('explorer')}
+          className={`flex-1 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === 'explorer'
+              ? 'bg-zinc-700 text-white'
+              : 'text-zinc-500 hover:text-zinc-300'
+          }`}
+        >
+          Analyst
+        </button>
+      </div>
+
+      {/* ── RECORDER ─────────────────────────────────────── */}
+      <div className={`flex flex-col flex-1 overflow-hidden ${activeTab !== 'recorder' ? 'hidden' : ''}`}>
+      <div className="p-6 flex-1 overflow-y-auto">
+
+        <div className="flex flex-col items-center gap-5">
+          {/* Tape reel — clickable */}
+          <button onClick={toggleRecorder} className="focus:outline-none" aria-label="Toggle recording">
+            <TapeReel
+              isActive={stt.isListening}
+              soundDetected={stt.soundDetected}
+              isTranscribing={stt.isTranscribing}
+              isProcessing={isProcessing}
+            />
           </button>
+
+          {/* Status */}
+          <div className="text-center space-y-1">
+            <p className="text-sm">
+              {recorderStatus === 'idle' && <span className="text-zinc-500">Click to start</span>}
+              {recorderStatus === 'listening' && <span className="text-green-400">Listening</span>}
+              {recorderStatus === 'recording' && <span className="text-yellow-400 animate-pulse">Recording...</span>}
+              {recorderStatus === 'processing' && <span className="text-blue-400">Processing...</span>}
+              {stt.isTranscribing && recorderStatus !== 'processing' && <span className="text-blue-400">Transcribing...</span>}
+            </p>
+            <p className="text-xs text-zinc-600">Speak your trades naturally. Everything is handled silently.</p>
+          </div>
+        </div>
+
+        {/* Recent captures */}
+        {recorderEntries.length > 0 && (
+          <div className="mt-6 space-y-1.5">
+            {recorderEntries.map((entry, i) => (
+              <div key={i} className={`flex items-center justify-between text-xs rounded-lg px-3 py-2 ${
+                i === 0 ? 'bg-zinc-800' : 'bg-zinc-800/50'
+              }`}>
+                <span className="text-zinc-400 truncate max-w-[65%]">{entry.text}</span>
+                <span className={entry.saved ? 'text-green-400 font-medium' : 'text-zinc-600'}>
+                  {entry.saved
+                    ? `✓ ${[entry.instrument, entry.pnl != null ? `$${entry.pnl}` : null].filter(Boolean).join(' ') || 'saved'}`
+                    : 'heard'
+                  }
+                </span>
+              </div>
+            ))}
+
+            {/* End Session */}
+            <div className="pt-3 flex flex-col items-center gap-1">
+              {sessionSent === 'sent' ? (
+                <p className="text-green-400 text-xs">Summary sent to Telegram</p>
+              ) : sessionSent === 'no_telegram' ? (
+                <p className="text-zinc-500 text-xs">Connect Telegram in Settings to receive summaries</p>
+              ) : (
+                <button
+                  onClick={() => void handleEndSession()}
+                  disabled={sessionSent === 'sending'}
+                  className="text-xs text-zinc-500 hover:text-white border border-zinc-700 hover:border-zinc-500 rounded-lg px-4 py-1.5 transition-colors disabled:opacity-50"
+                >
+                  {sessionSent === 'sending' ? 'Sending...' : 'End Session'}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
         </div>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {messages.map((msg, i) => (
-          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
-              msg.role === 'user'
-                ? 'bg-blue-600 text-white rounded-br-sm'
-                : 'bg-zinc-800 text-zinc-100 rounded-bl-sm'
-            }`}>
-              {msg.content}
-            </div>
-          </div>
-        ))}
-        {/* Recording indicator — shows while mic detects sound */}
-        {stt.soundDetected && !silentMode && (
-          <div className="flex justify-end">
-            <div className="max-w-[80%] rounded-2xl px-4 py-2 text-sm bg-blue-600/30 text-blue-300 rounded-br-sm italic flex items-center gap-2">
-              <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse" />
-              recording...
-            </div>
-          </div>
-        )}
-        {/* Transcribing indicator — shows while Whisper processes */}
-        {stt.isTranscribing && !silentMode && (
-          <div className="flex justify-end">
-            <div className="max-w-[80%] rounded-2xl px-4 py-2 text-sm bg-zinc-700/50 text-zinc-400 rounded-br-sm italic">
-              transcribing...
-            </div>
-          </div>
-        )}
-        {(loading || proactiveLoading) && (
-          <div className="flex justify-start">
-            <div className="bg-zinc-800 rounded-2xl rounded-bl-sm px-4 py-2">
-              <div className="flex gap-1">
-                <span className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+      {/* ── EXPLORER MODE ────────────────────────────────── */}
+      <div className={`flex flex-col flex-1 overflow-hidden ${activeTab !== 'explorer' ? 'hidden' : ''}`}>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {messages.map((msg, i) => (
+            <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
+                msg.role === 'user'
+                  ? 'bg-blue-600 text-white rounded-br-sm'
+                  : 'bg-zinc-800 text-zinc-100 rounded-bl-sm'
+              }`}>
+                {msg.content}
               </div>
             </div>
-          </div>
-        )}
-        <div ref={messagesEndRef} />
-      </div>
+          ))}
+          {(loading || proactiveLoading) && (
+            <div className="flex justify-start">
+              <div className="bg-zinc-800 rounded-2xl rounded-bl-sm px-4 py-2">
+                <div className="flex gap-1">
+                  <span className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+              </div>
+            </div>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
 
-      {/* Input */}
-      <div className="p-4 border-t border-zinc-800">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && void sendMessage(input)}
-            placeholder={silentMode ? 'Silent mode — speaking but not shown' : stt.isListening ? 'Speak or type...' : 'Type or use voice...'}
-            className="flex-1 bg-zinc-800 border border-zinc-700 text-white rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500 transition"
-          />
-          <button
-            onClick={() => void sendMessage(input)}
-            disabled={loading || !input.trim()}
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg px-4 py-2.5 text-sm transition"
-          >
-            Send
-          </button>
+        {/* Input */}
+        <div className="p-4 border-t border-zinc-800 flex-shrink-0">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && void sendExplorerMessage(input)}
+              placeholder="How do I perform on Mondays? What's my biggest weakness?"
+              className="flex-1 bg-zinc-800 border border-zinc-700 text-white rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500 transition placeholder:text-zinc-600"
+            />
+            <button
+              onClick={() => void sendExplorerMessage(input)}
+              disabled={loading || !input.trim()}
+              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg px-4 py-2.5 text-sm transition"
+            >
+              Ask
+            </button>
+          </div>
         </div>
       </div>
     </div>

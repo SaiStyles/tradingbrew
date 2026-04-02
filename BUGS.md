@@ -43,6 +43,7 @@ Going below ~2s voice-to-voice requires a WebSocket architecture with streaming 
 
 ---
 
+
 ## [2026-04-01] Test suite requires --no-file-parallelism
 
 Running `npx vitest run` without the flag causes concurrent API calls to hit the 50 RPM Haiku rate limit, causing random test failures. Always run: `npx vitest run --no-file-parallelism`. This is already set in vitest.config.ts via `fileParallelism: false` so it should apply automatically.

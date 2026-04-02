@@ -60,7 +60,9 @@ export async function POST(request: NextRequest) {
     ) {
       return new Response(JSON.stringify({ error: 'Invalid request body' }), { status: 400, headers: { 'Content-Type': 'application/json' } })
     }
-    const { message } = body as { message: string }
+    const { message, mode = 'explorer' } = body as { message: string; mode?: string }
+    const isRecorder = mode === 'recorder'
+    const isExplorer = mode === 'explorer'
 
     // Step 1: Load profile + session in parallel, 4s timeout
     const step1Timeout = new Promise<null>(resolve => setTimeout(() => resolve(null), 4000))
@@ -136,19 +138,24 @@ export async function POST(request: NextRequest) {
 
     const t0 = Date.now()
 
-    // Portrait: fetch once per trading day. Supabase cache checked first (free).
-    const portraitPromise = session.trader_portrait
-      ? Promise.resolve(session.trader_portrait)
-      : Promise.race([
-          getTraderPortrait(user.id, tradingDate),
-          new Promise<string>(resolve => setTimeout(() => resolve(''), 3000)),
-        ])
+    // Portrait: explorer only — Buddy needs it. Recorder has no Buddy, skip the fetch entirely.
+    const portraitPromise = isExplorer
+      ? (session.trader_portrait
+          ? Promise.resolve(session.trader_portrait)
+          : Promise.race([
+              getTraderPortrait(user.id, tradingDate),
+              new Promise<string>(resolve => setTimeout(() => resolve(''), 3000)),
+            ]))
+      : Promise.resolve(session.trader_portrait || '')
 
     const [extracted, context, freshPortrait] = await Promise.all([
-      Promise.race([
-        runExtractor(message, tradingTimezone),
-        new Promise<ExtractedData>(resolve => setTimeout(() => resolve(EXTRACTOR_EMPTY), 2000)),
-      ]),
+      // Recorder: extract trade fields from voice. Explorer: no extraction, pure text chat.
+      isRecorder
+        ? Promise.race([
+            runExtractor(message, tradingTimezone, 'recorder'),
+            new Promise<ExtractedData>(resolve => setTimeout(() => resolve(EXTRACTOR_EMPTY), 2000)),
+          ])
+        : Promise.resolve(EXTRACTOR_EMPTY),
       runContext(user.id, tradingTimezone, message),
       portraitPromise,
     ])
@@ -158,9 +165,9 @@ export async function POST(request: NextRequest) {
 
     console.log('[agents] extractor + context + portrait:', Date.now() - t0, 'ms', traderPortrait ? '(portrait ready)' : '(no portrait yet)')
 
-    // Step 2.5: Query Agent — runs only for historical analysis questions
+    // Step 2.5: Query Agent — explorer only, runs only for historical analysis questions
     let enrichedContext = context
-    if (extracted.query_type === 'historical_analysis' && extracted.query_subtype !== 'psychology') {
+    if (isExplorer && extracted.query_type === 'historical_analysis' && extracted.query_subtype !== 'psychology') {
       try {
         const queryResult = await runQueryAnalyst({
           question: message,
@@ -222,8 +229,9 @@ export async function POST(request: NextRequest) {
     const analystPromise = shouldRunAnalyst
       ? runAnalyst(extracted, enrichedContext).catch(() => null)
       : Promise.resolve(null)
-    const saveDetectorPromise = (extracted.has_trade || session.messages.length > 0)
-      ? runSaveDetector({ messages: conversationSoFar, extracted, tradingDate, tradingTimezone })
+    // SaveDetector: recorder only. Explorer never saves trades.
+    const saveDetectorPromise = (isRecorder && (extracted.has_trade || session.messages.length > 0))
+      ? runSaveDetector({ messages: conversationSoFar, extracted, tradingDate, tradingTimezone, mode: 'recorder' })
       : Promise.resolve({ reply: '', save_trade: false, trade_data: null })
 
     // Analyst violations writer — fires when Analyst finishes, never blocks the response
@@ -298,27 +306,28 @@ export async function POST(request: NextRequest) {
         let fullReply = ''
 
         try {
-          // Try streaming first
-          const buddyStream = createBuddyStream(buddyParams)
-
-          if (buddyStream) {
-            for await (const event of buddyStream) {
-              if (
-                event.type === 'content_block_delta' &&
-                event.delta.type === 'text_delta'
-              ) {
-                const text = event.delta.text
-                fullReply += text
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'token', text })}\n\n`))
+          if (isExplorer) {
+            // Explorer: stream Buddy tokens to client
+            const buddyStream = createBuddyStream(buddyParams)
+            if (buddyStream) {
+              for await (const event of buddyStream) {
+                if (
+                  event.type === 'content_block_delta' &&
+                  event.delta.type === 'text_delta'
+                ) {
+                  const text = event.delta.text
+                  fullReply += text
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'token', text })}\n\n`))
+                }
               }
+            } else {
+              // Fallback: no API key
+              fullReply = await runBuddy(buddyParams)
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'token', text: fullReply })}\n\n`))
             }
-          } else {
-            // Fallback: no API key — use runBuddy which returns default message
-            fullReply = await runBuddy(buddyParams)
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'token', text: fullReply })}\n\n`))
+            console.log('[agents] buddy streaming done:', Date.now() - t1, 'ms')
           }
-
-          console.log('[agents] buddy streaming done:', Date.now() - t1, 'ms')
+          // Recorder: no Buddy call — silent operation, just save and done
 
           // Only await SaveDetector — Analyst runs fully in background (violations handled above)
           const saveResult = await saveDetectorPromise
@@ -326,12 +335,17 @@ export async function POST(request: NextRequest) {
           console.log('[agents] save-detector done:', Date.now() - t1, 'ms')
           console.log('[save-detector] result:', JSON.stringify({ save_trade: saveResult.save_trade, instrument: saveResult.trade_data?.instrument, pnl: saveResult.trade_data?.pnl }))
 
-          // Update conversation history
-          const updatedMessages: ChatMessage[] = [
-            ...session.messages,
-            { role: 'user' as const, content: message },
-            { role: 'assistant' as const, content: fullReply },
-          ].slice(-20)
+          // Update conversation history — explorer adds buddy reply, recorder adds user turn only
+          const updatedMessages: ChatMessage[] = isExplorer
+            ? [
+                ...session.messages,
+                { role: 'user' as const, content: message },
+                { role: 'assistant' as const, content: fullReply },
+              ].slice(-20)
+            : [
+                ...session.messages,
+                { role: 'user' as const, content: message },
+              ].slice(-20)
 
           // Save trade if SaveDetector decided to
           const saveDetectorFired = extracted.has_trade || session.messages.length > 0
