@@ -34,6 +34,7 @@ news_events (economic calendar — may be empty for past events):
 - currency: affected currency
 
 RULES FOR SQL GENERATION:
+- Trader slang: "bad trade" / "ass trade" / "terrible trade" / "disaster" / "worst" / "blowup" = pnl < 0 (losing trade). "big win" / "best trade" / "crusher" = pnl > 0 ORDER BY pnl DESC. "last [X] trade" = ORDER BY opened_at DESC LIMIT 1.
 - Always filter: deleted_at IS NULL on trades
 - Never include user_id in WHERE — it will be injected automatically
 - Always include LIMIT 100 unless the query is purely an aggregate (COUNT, SUM, AVG, etc.)
