@@ -44,6 +44,15 @@ Going below ~2s voice-to-voice requires a WebSocket architecture with streaming 
 ---
 
 
+## [2026-04-02] Vercel deployment — MIDDLEWARE_INVOCATION_FAILED
+
+Site deployed to Vercel but returns 500 on every request. Root cause not yet confirmed.
+Env vars verified present with correct names (NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY etc).
+Middleware is standard Supabase SSR pattern — should not crash if env vars are set.
+**Next session:** check Vercel function logs for the actual runtime error. May need a fresh redeploy.
+
+---
+
 ## [2026-04-01] Test suite requires --no-file-parallelism
 
 Running `npx vitest run` without the flag causes concurrent API calls to hit the 50 RPM Haiku rate limit, causing random test failures. Always run: `npx vitest run --no-file-parallelism`. This is already set in vitest.config.ts via `fileParallelism: false` so it should apply automatically.

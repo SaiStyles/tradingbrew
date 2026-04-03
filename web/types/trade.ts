@@ -76,6 +76,7 @@ export interface RuleViolationFinding {
 export interface HistoricalQueryResult {
   query_description: string
   results: Record<string, unknown>[]
+  psychology_results?: string[] // Scribe observations from psychology_log for this period
   error?: string
 }
 
@@ -262,6 +263,7 @@ export const ScribeOutputSchema = z.object({
 
 export const QueryAnalystOutputSchema = z.object({
   sql: z.string().nullable(),
+  psychology_sql: z.string().nullable().optional(),
   query_description: z.string(),
   needs_sql: z.boolean(),
 })

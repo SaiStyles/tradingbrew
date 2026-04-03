@@ -73,14 +73,23 @@ Think step by step:
 2. What columns and tables are needed?
 3. What time range, grouping, or aggregation makes sense?
 4. Write the SQL.
+5. Should I also fetch psychology_log observations for this period?
 
 Return JSON only:
-{"sql":"SELECT ...","query_description":"plain English description of what this query returns","needs_sql":true}
+{"sql":"SELECT ...","psychology_sql":"SELECT ... or null","query_description":"plain English description of what this query returns","needs_sql":true}
+
+psychology_sql rules:
+- Generate it when the question references a SPECIFIC date, day, week, or period (e.g. "April 1st", "last Monday", "this week") OR when query_subtype is "both"
+- For a specific date: SELECT entry_date, observation FROM psychology_log WHERE entry_date = 'YYYY-MM-DD' ORDER BY created_at
+- For a date range: SELECT entry_date, observation FROM psychology_log WHERE entry_date BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD' ORDER BY entry_date, created_at
+- For a day-of-week pattern (e.g. "how am I on Mondays"): SELECT entry_date, observation FROM psychology_log WHERE EXTRACT(DOW FROM entry_date) = N ORDER BY entry_date DESC LIMIT 20
+- If the question is about overall patterns with no specific date anchor → null
+- Always null when needs_sql is false
 
 IMPORTANT: If the question mentions ANY measurable metric (win rate, P&L, count, percentage, performance, "how do I do", "how did I", instrument comparison) — needs_sql MUST be true and sql MUST be populated.
 
 If the question is PURELY about psychology/emotions/feelings with absolutely no numerical component (e.g. "what is my biggest weakness emotionally?"), return:
-{"sql":null,"query_description":"<plain English>","needs_sql":false}`
+{"sql":null,"psychology_sql":null,"query_description":"<plain English>","needs_sql":false}`
 
     const result = await withRetry(() => anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',

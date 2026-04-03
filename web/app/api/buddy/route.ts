@@ -196,6 +196,24 @@ export async function POST(request: NextRequest) {
         } else {
           enrichedContext = { ...context, historicalQuery: { query_description: queryResult.query_description, results: [] } }
         }
+
+        // Fetch psychology_log observations for the same period, if AI generated psychology_sql
+        if (queryResult.psychology_sql && enrichedContext.historicalQuery) {
+          try {
+            const { results: psychRows } = await runAnalyticsQuery(user.id, queryResult.psychology_sql)
+            const observations = psychRows
+              .map(r => r.observation as string)
+              .filter((o): o is string => typeof o === 'string' && o.length > 0)
+            if (observations.length > 0) {
+              enrichedContext = {
+                ...enrichedContext,
+                historicalQuery: { ...enrichedContext.historicalQuery, psychology_results: observations },
+              }
+            }
+          } catch (pe) {
+            console.error('[query-agent] psychology_sql failed:', pe)
+          }
+        }
       } catch (e) {
         console.error('[query-agent] failed:', e)
       }

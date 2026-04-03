@@ -169,7 +169,9 @@ ${context.historicalQuery.results.length > 0
   ? `DATA:\n${JSON.stringify(context.historicalQuery.results, null, 2)}`
   : context.historicalQuery.error
     ? `No data available (${context.historicalQuery.error})`
-    : 'No data found for this query.'}`
+    : 'No data found for this query.'}${context.historicalQuery.psychology_results?.length
+  ? `\n\nPSYCHOLOGY OBSERVATIONS (what Scribe noticed during this period):\n${context.historicalQuery.psychology_results.join('\n')}`
+  : ''}`
     : null
 
   const portraitSection = traderPortrait
