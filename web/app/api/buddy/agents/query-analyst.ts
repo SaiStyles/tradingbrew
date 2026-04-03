@@ -27,6 +27,23 @@ psychology_log (Scribe observations tied to a specific day):
 - observation: plain text psychological observation written by Scribe
 - trade_id: UUID — linked trade, may be null
 
+rules (the trader's self-defined trading rules):
+- id: UUID
+- raw_text: the rule as written by the trader (e.g. "No trading after 3 losses", "Max 3 trades per day")
+- is_active: boolean — true if rule is currently active
+- last_triggered_at: when this rule was last violated (timestamptz), may be null
+
+rule_violations (every time the Analyst detected a rule breach):
+- rule_id: UUID — links to rules.id
+- trade_id: UUID — the trade that triggered the violation, may be null
+- created_at: when the violation was recorded (timestamptz)
+- analyst_reasoning: plain text explanation of why the rule was violated
+
+JOINS for rule analytics:
+- To count violations per rule: JOIN rule_violations rv ON rv.rule_id = r.id WHERE r.user_id = ... (user_id injected automatically)
+- Most broken rule: SELECT r.raw_text, COUNT(rv.id) as violation_count FROM rules r LEFT JOIN rule_violations rv ON rv.rule_id = r.id GROUP BY r.id, r.raw_text ORDER BY violation_count DESC LIMIT 5
+- Note: rule_violations does NOT have user_id — filter via rules JOIN (user_id is on rules table)
+
 news_events (economic calendar — may be empty for past events):
 - event_name: e.g. 'FOMC Rate Decision', 'CPI', 'NFP'
 - scheduled_at: event timestamp (timestamptz)
