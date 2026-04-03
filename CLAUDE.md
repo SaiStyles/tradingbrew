@@ -408,6 +408,9 @@ PROACTIVE BUDDY (Haiku) — NEW
      Requires: docs/add-telegram.sql + webhook registration + 3 env vars.
 - ⬜ Tauri desktop app
 
+## Debugging Philosophy
+- **Never patch work — always fix the root.** If something breaks, find why before touching code. A patch that hides the symptom is worse than the original bug.
+
 ## Coding Rules
 - TypeScript always, no any types
 - Tailwind only, no inline styles
