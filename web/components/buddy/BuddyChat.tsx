@@ -67,8 +67,8 @@ function TapeReel({ isActive, soundDetected, isTranscribing, isProcessing }: {
           return (
             <line
               key={deg}
-              x1={70 + 28 * Math.cos(rad)} y1={70 + 28 * Math.sin(rad)}
-              x2={70 + 55 * Math.cos(rad)} y2={70 + 55 * Math.sin(rad)}
+              x1={parseFloat((70 + 28 * Math.cos(rad)).toFixed(3))} y1={parseFloat((70 + 28 * Math.sin(rad)).toFixed(3))}
+              x2={parseFloat((70 + 55 * Math.cos(rad)).toFixed(3))} y2={parseFloat((70 + 55 * Math.sin(rad)).toFixed(3))}
               stroke={isActive ? `${color}40` : '#27272a'}
               strokeWidth="1"
             />
@@ -86,8 +86,8 @@ function TapeReel({ isActive, soundDetected, isTranscribing, isProcessing }: {
           return (
             <circle
               key={deg}
-              cx={70 + 14 * Math.cos(rad)}
-              cy={70 + 14 * Math.sin(rad)}
+              cx={parseFloat((70 + 14 * Math.cos(rad)).toFixed(3))}
+              cy={parseFloat((70 + 14 * Math.sin(rad)).toFixed(3))}
               r="5"
               fill={holeFill}
               stroke={color}

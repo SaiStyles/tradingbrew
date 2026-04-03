@@ -148,8 +148,8 @@ tradingbrew/
 - Returns SSE with done event only (no token stream).
 
 **Analyst pipeline** (text input, exploration only):
-- Context → QueryAnalyst (if needed) → Buddy stream → Scribe (after())
-- NO Extractor (uses EXTRACTOR_EMPTY). NO SaveDetector. Never saves trades. Ever.
+- Extractor (full prompt, query_type detection) + Context → QueryAnalyst (if needed) → Buddy stream → Scribe (after())
+- NO SaveDetector. Never saves trades. Extractor runs for query_type/subtype only — has_trade ignored.
 - Portrait fetch runs — Buddy needs it.
 - Returns SSE with token stream + done event.
 
@@ -397,12 +397,10 @@ PROACTIVE BUDDY (Haiku) — NEW
      decisive save). Analyst tab: SaveDetector never runs. Explorer never saves trades.
 - ✅ Test suite updated for SSE — route-integration tests now parse SSE stream via parseSSE() helper.
      122/123 passing (1 pre-existing flaky personality test, unrelated to changes).
-- ⬜ Analyst full DB access — QueryAnalyst currently only handles pattern/performance questions.
-     Needs to answer date-specific queries: "how did I trade on April 1st?" should return
-     trades for that day + psychology_log entries for that date + Scribe observations.
-     Requires: enriching QueryAnalyst schema with psychology_log table, expanding query_type
-     detection to cover date lookups, and feeding psychology_log results alongside trade data
-     into Buddy's context so it can tell the full story of a specific day.
+- ✅ Analyst full DB access — QueryAnalyst now generates optional psychology_sql alongside
+     trade SQL for date-specific queries. Route runs both, merges results. Buddy receives
+     trade data + Scribe observations for the period. "How did I trade on April 1st?" returns
+     trades + what Scribe observed about the trader's psychology that day.
 - ⬜ Streak card on /dashboard hardcoded "0 days" — fix later
 - ✅ Telegram end-of-session delivery — BUILT (Session 17)
      Connect in Settings → Notifications → deep link → /start token → chat_id stored.

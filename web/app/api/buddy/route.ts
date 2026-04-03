@@ -149,13 +149,12 @@ export async function POST(request: NextRequest) {
       : Promise.resolve(session.trader_portrait || '')
 
     const [extracted, context, freshPortrait] = await Promise.all([
-      // Recorder: extract trade fields from voice. Explorer: no extraction, pure text chat.
-      isRecorder
-        ? Promise.race([
-            runExtractor(message, tradingTimezone, 'recorder'),
-            new Promise<ExtractedData>(resolve => setTimeout(() => resolve(EXTRACTOR_EMPTY), 2000)),
-          ])
-        : Promise.resolve(EXTRACTOR_EMPTY),
+      // Recorder: lean prompt, trade fields only.
+      // Explorer: full prompt, query_type detection needed to gate QueryAnalyst.
+      Promise.race([
+        runExtractor(message, tradingTimezone, isRecorder ? 'recorder' : 'explorer'),
+        new Promise<ExtractedData>(resolve => setTimeout(() => resolve(EXTRACTOR_EMPTY), 2000)),
+      ]),
       runContext(user.id, tradingTimezone, message),
       portraitPromise,
     ])
