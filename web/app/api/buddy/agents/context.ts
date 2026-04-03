@@ -79,9 +79,9 @@ export async function runContext(
         .select('*')
         .eq('user_id', userId)
         .is('deleted_at', null)
-        .gte('created_at', sevenDaysAgo)
-        .lt('created_at', todayStart)
-        .order('created_at', { ascending: false })
+        .gte('opened_at', sevenDaysAgo)
+        .lt('opened_at', todayStart)
+        .order('opened_at', { ascending: false })
         .limit(100),
       supabase
         .from('rules')

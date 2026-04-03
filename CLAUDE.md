@@ -186,7 +186,7 @@ QUERY ANALYST (Haiku) — NEW
 - Output: SELECT-only SQL with chain-of-thought reasoning
 - Enriched schema: semantic column descriptions, not just types
 - Self-correction: if SQL errors, retries once with error message
-- psychology-only questions (query_subtype = "psychology") skip SQL entirely
+- QueryAnalyst decides what to generate — no upstream subtype routing. Always considers psychology_sql.
 - SQL executed via Supabase RPC run_analytics_query()
   → Validates SELECT-only, injects user_id, enforces LIMIT 100
   → Requires one-time setup: docs/setup-analytics-function.sql
@@ -401,7 +401,22 @@ PROACTIVE BUDDY (Haiku) — NEW
      trade SQL for date-specific queries. Route runs both, merges results. Buddy receives
      trade data + Scribe observations for the period. "How did I trade on April 1st?" returns
      trades + what Scribe observed about the trader's psychology that day.
-- ⬜ Streak card on /dashboard hardcoded "0 days" — fix later
+- ✅ Streak card on /dashboard — real streak computed from last 30 days of trades.
+     Groups by day, finds consecutive win/loss days, shows "N days" with color.
+- ✅ Rules analytics pipeline — fully working end-to-end (2026-04-03):
+     Extractor keyword fallback in route.ts; injectUserIdFilter JOIN-aware;
+     deleted_at IS NULL enforced both in prompt AND code-level in run-analytics.ts;
+     rule_violations EXACT schema documented (violated_at, no created_at, FORBIDDEN block).
+- ✅ Rules hard delete — DELETE + nullify rule_id on violations. Returns 404 when 0 rows.
+- ✅ Rules toggle removed — add + trash only.
+- ✅ Date resolution fixed — year-less dates resolve to most recent past, never future.
+- ✅ Timezone-aware DOW/HOUR — EXTRACT uses trader's timezone not UTC.
+- ✅ Context weekly query — opened_at replaces created_at for weekly trade window.
+- ✅ QueryAnalyst owns all routing (2026-04-03) — query_subtype removed from params and gate.
+     QueryAnalyst decides what to fetch (trade SQL, psychology_sql, or both) without upstream guessing.
+     Open-ended psychology ("how have I been lately") now always queries psychology_log last 60 entries.
+     query_type gate preserved — QueryAnalyst only runs when needed.
+- ✅ WATCHOUT.md created — edge case test questions + priority backlog.
 - ✅ Telegram end-of-session delivery — BUILT (Session 17)
      Connect in Settings → Notifications → deep link → /start token → chat_id stored.
      End Session button in Recorder tab → POST /api/telegram/summary → sends formatted summary.

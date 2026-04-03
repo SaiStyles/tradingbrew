@@ -56,8 +56,9 @@ RULES FOR SQL GENERATION:
 - Never include user_id in WHERE — it will be injected automatically
 - Always include LIMIT 100 unless the query is purely an aggregate (COUNT, SUM, AVG, etc.)
 - Use opened_at for timing analysis
-- Day of week: EXTRACT(DOW FROM opened_at AT TIME ZONE 'UTC') — 0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday, 6=Saturday
-- Hour of day: EXTRACT(HOUR FROM opened_at AT TIME ZONE 'UTC')
+- Day of week: EXTRACT(DOW FROM opened_at AT TIME ZONE '<trader_tz>') — 0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday, 6=Saturday
+- Hour of day: EXTRACT(HOUR FROM opened_at AT TIME ZONE '<trader_tz>')
+- TIMEZONE RULE: Replace '<trader_tz>' with the trader's timezone string from the user message (e.g. 'America/New_York'). Never use 'UTC' — traders think in their local time, not UTC.
 - For win rate: COUNT(*) FILTER (WHERE pnl > 0) * 100.0 / NULLIF(COUNT(*), 0)
 - If FOMC/news events are requested, JOIN with news_events on DATE(opened_at) = DATE(scheduled_at)
 - For psychology/emotional state questions about a specific day, SELECT from psychology_log WHERE entry_date = '<date>'
@@ -65,16 +66,7 @@ RULES FOR SQL GENERATION:
 `
 
 export async function runQueryAnalyst(params: QueryAnalystParams): Promise<QueryAnalystOutput> {
-  const { question, querySubtype, tradingTimezone, currentDate } = params
-
-  // Psychology-only questions don't need SQL — Hindsight handles them
-  if (querySubtype === 'psychology') {
-    return {
-      sql: null,
-      query_description: question,
-      needs_sql: false,
-    }
-  }
+  const { question, tradingTimezone, currentDate } = params
 
   try {
     const apiKey = process.env.ANTHROPIC_API_KEY
@@ -97,17 +89,16 @@ Return JSON only:
 {"sql":"SELECT ...","psychology_sql":"SELECT ... or null","query_description":"plain English description of what this query returns","needs_sql":true}
 
 psychology_sql rules:
-- Generate it when the question references a SPECIFIC date, day, week, or period (e.g. "April 1st", "last Monday", "this week") OR when query_subtype is "both"
-- For a specific date: SELECT entry_date, observation FROM psychology_log WHERE entry_date = 'YYYY-MM-DD' ORDER BY created_at
-- For a date range: SELECT entry_date, observation FROM psychology_log WHERE entry_date BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD' ORDER BY entry_date, created_at
-- For a day-of-week pattern (e.g. "how am I on Mondays"): SELECT entry_date, observation FROM psychology_log WHERE EXTRACT(DOW FROM entry_date) = N ORDER BY entry_date DESC LIMIT 20
-- If the question is about overall patterns with no specific date anchor → null
-- Always null when needs_sql is false
+- Generate it whenever the question touches psychology, emotions, feelings, behavior patterns, or mental state — regardless of whether needs_sql is true or false
+- Open-ended with no date anchor ("how have I been", "what's my psychology lately", "am I revenge trading", "what's my biggest weakness"): SELECT entry_date, observation FROM psychology_log ORDER BY entry_date DESC LIMIT 60
+- Specific date: SELECT entry_date, observation FROM psychology_log WHERE entry_date = 'YYYY-MM-DD' ORDER BY created_at
+- Date range: SELECT entry_date, observation FROM psychology_log WHERE entry_date BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD' ORDER BY entry_date, created_at
+- Day-of-week pattern ("how am I on Mondays"): SELECT entry_date, observation FROM psychology_log WHERE EXTRACT(DOW FROM entry_date) = N ORDER BY entry_date DESC LIMIT 20
+- null ONLY when the question is purely about numbers/stats with zero psychological component (e.g. "how many NQ trades did I take")
 
 IMPORTANT: If the question mentions ANY measurable metric (win rate, P&L, count, percentage, performance, "how do I do", "how did I", instrument comparison) — needs_sql MUST be true and sql MUST be populated.
 
-If the question is PURELY about psychology/emotions/feelings with absolutely no numerical component (e.g. "what is my biggest weakness emotionally?"), return:
-{"sql":null,"psychology_sql":null,"query_description":"<plain English>","needs_sql":false}`
+If the question is PURELY about psychology/emotions/feelings with no numerical component: needs_sql must be false, sql must be null, but psychology_sql MUST be populated with the appropriate query from psychology_log.`
 
     const result = await withRetry(() => anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
@@ -122,28 +113,6 @@ If the question is PURELY about psychology/emotions/feelings with absolutely no 
     const raw = result.content[0].type === 'text' ? '{' + result.content[0].text : ''
     const parsed = parseWithSchema(raw, QueryAnalystOutputSchema)
     if (!parsed) return { sql: null, query_description: question, needs_sql: false }
-    // For 'data' subtypes, needs_sql must always be true — AI must not reclassify as psychology
-    if (querySubtype === 'data') {
-      if (parsed.sql && !parsed.needs_sql) {
-        return { ...parsed, needs_sql: true }
-      }
-      // If AI returned no SQL for a data question, retry once with explicit instruction
-      if (!parsed.sql) {
-        const retry = await withRetry(() => anthropic.messages.create({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 400,
-          system: [{ type: 'text', text: staticSystem, cache_control: { type: 'ephemeral' } }],
-          messages: [
-            { role: 'user', content: `A trader asked: "${question}"\n\nToday: ${currentDate} (timezone: ${tradingTimezone})\n\nIMPORTANT: This is a DATA question. You MUST generate SQL. Return needs_sql: true with a SELECT query.` },
-            { role: 'assistant', content: '{' },
-          ],
-        }))
-        const retryRaw = retry.content[0].type === 'text' ? '{' + retry.content[0].text : ''
-        const retryParsed = parseWithSchema(retryRaw, QueryAnalystOutputSchema)
-        if (retryParsed?.sql) return { ...retryParsed, needs_sql: true }
-        return { sql: null, query_description: parsed.query_description || question, needs_sql: true }
-      }
-    }
     return parsed
   } catch (e) {
     console.error('[query-analyst] failed:', e)

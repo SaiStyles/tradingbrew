@@ -212,7 +212,6 @@ export interface ScribeParams {
 
 export interface QueryAnalystParams {
   question: string
-  querySubtype: 'data' | 'psychology' | 'both' | null
   tradingTimezone: string
   currentDate: string
 }

@@ -162,15 +162,26 @@ export async function POST(request: NextRequest) {
     const traderPortrait = freshPortrait || session.trader_portrait
     if (freshPortrait) session.trader_portrait = freshPortrait
 
+<<<<<<< ours
+    // Fallback: Haiku misses rules/violations questions — classify them here if extractor returned null
+    if (isExplorer && extracted.query_type === null) {
+      const lower = message.toLowerCase()
+      const isRulesQuery = /\b(rule|rules|violation|violations|break|broke|breaking|broken|violat|follow.*rule|rule.*follow|comply|compliance)\b/.test(lower)
+      if (isRulesQuery) {
+        extracted.query_type = 'historical_analysis'
+      }
+    }
+=======
     console.log('[agents] extractor + context + portrait:', Date.now() - t0, 'ms', traderPortrait ? '(portrait ready)' : '(no portrait yet)')
+>>>>>>> theirs
 
     // Step 2.5: Query Agent — explorer only, runs only for historical analysis questions
+    // QueryAnalyst owns all routing decisions: what SQL to generate, whether to fetch psychology_log, needs_sql flag.
     let enrichedContext = context
-    if (isExplorer && extracted.query_type === 'historical_analysis' && extracted.query_subtype !== 'psychology') {
+    if (isExplorer && extracted.query_type === 'historical_analysis') {
       try {
         const queryResult = await runQueryAnalyst({
           question: message,
-          querySubtype: extracted.query_subtype,
           tradingTimezone,
           currentDate: tradingDate,
         })
@@ -181,7 +192,6 @@ export async function POST(request: NextRequest) {
           if (error && error !== 'Only SELECT queries allowed') {
             const retryResult = await runQueryAnalyst({
               question: `${message}\n\n[Previous SQL failed with: ${error}. Fix and regenerate.]`,
-              querySubtype: extracted.query_subtype,
               tradingTimezone,
               currentDate: tradingDate,
             })
