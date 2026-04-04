@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { TradeRecord } from '@/types/trade'
 import TradeDrawer from './TradeDrawer'
+import TradeScreenshots from './TradeScreenshots'
+import TradeVoiceNote from './TradeVoiceNote'
 
 interface TradeDetailClientProps {
   trade: TradeRecord
@@ -159,13 +161,34 @@ export default function TradeDetailClient({ trade, tradingTimezone }: TradeDetai
         </div>
 
         {/* Details card */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-6 py-2 mb-6">
-          <FieldRow label="Entry Price" value={currentTrade.entry_price !== null ? `$${currentTrade.entry_price}` : null} />
-          <FieldRow label="Exit Price" value={currentTrade.exit_price !== null ? `$${currentTrade.exit_price}` : null} />
-          <FieldRow label="Stop Loss" value={currentTrade.stop_loss !== null ? `$${currentTrade.stop_loss}` : null} />
-          <FieldRow label="Position Size" value={currentTrade.position_size ?? null} />
-          <FieldRow label="Entry Time" value={formatDate(currentTrade.opened_at)} />
-          <FieldRow label="Exit Time" value={formatDate(currentTrade.closed_at)} />
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-6 py-4 mb-6">
+
+          {/* Price row — 4 compact fields in one line */}
+          <div className="grid grid-cols-4 gap-4 pb-4 border-b border-zinc-800 mb-2">
+            {[
+              { label: 'Entry', value: currentTrade.entry_price !== null ? `$${currentTrade.entry_price}` : '—' },
+              { label: 'Exit', value: currentTrade.exit_price !== null ? `$${currentTrade.exit_price}` : '—' },
+              { label: 'Stop', value: currentTrade.stop_loss !== null ? `$${currentTrade.stop_loss}` : '—' },
+              { label: 'Size', value: currentTrade.position_size !== null ? String(currentTrade.position_size) : '—' },
+            ].map(f => (
+              <div key={f.label}>
+                <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide mb-1">{f.label}</p>
+                <p className="text-sm text-white">{f.value}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 py-3 border-b border-zinc-800">
+            {[
+              { label: 'Entry Time', value: formatDate(currentTrade.opened_at) },
+              { label: 'Exit Time', value: formatDate(currentTrade.closed_at) },
+            ].map(f => (
+              <div key={f.label}>
+                <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide mb-1">{f.label}</p>
+                <p className="text-sm text-white">{f.value ?? <span className="text-zinc-600">—</span>}</p>
+              </div>
+            ))}
+          </div>
           <FieldRow
             label="Emotion"
             value={
@@ -184,7 +207,35 @@ export default function TradeDetailClient({ trade, tradingTimezone }: TradeDetai
                 : null
             }
           />
+          {currentTrade.session && (
+            <FieldRow label="Session" value={
+              <span className="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 text-xs capitalize">
+                {currentTrade.session.replace('_', ' ')}
+              </span>
+            } />
+          )}
+          {currentTrade.setup_type && (
+            <FieldRow label="Setup" value={currentTrade.setup_type} />
+          )}
+          {currentTrade.exit_reason && (
+            <FieldRow label="Exit Reason" value={currentTrade.exit_reason} />
+          )}
+          {currentTrade.mistakes && currentTrade.mistakes.length > 0 && (
+            <FieldRow label="Mistakes" value={
+              <div className="flex flex-wrap gap-1.5">
+                {currentTrade.mistakes.map(m => (
+                  <span key={m} className="px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 text-xs">{m}</span>
+                ))}
+              </div>
+            } />
+          )}
         </div>
+
+        {/* Screenshots */}
+        <TradeScreenshots tradeId={currentTrade.id} />
+
+        {/* Voice Note */}
+        <TradeVoiceNote tradeId={currentTrade.id} initialUrl={currentTrade.voice_note_url ?? null} />
 
         {/* Notes */}
         {currentTrade.notes && (

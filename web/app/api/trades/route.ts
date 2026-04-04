@@ -53,6 +53,11 @@ export async function POST(request: NextRequest) {
       execution_score: input.execution_score ?? null,
       notes: input.notes ?? null,
       followed_plan: input.followed_plan ?? null,
+      session: input.session ?? null,
+      setup_type: input.setup_type ?? null,
+      exit_reason: input.exit_reason ?? null,
+      mistakes: input.mistakes ?? [],
+      market_condition: input.market_condition ?? null,
       incomplete,
       deleted_at: null,
     }
@@ -101,18 +106,17 @@ export async function GET(request: NextRequest) {
       .select('*', { count: 'exact' })
       .eq('user_id', user.id)
       .is('deleted_at', null)
-      .order('created_at', { ascending: false })
+      .order('opened_at', { ascending: false, nullsFirst: false })
       .range(offset, offset + limit - 1)
 
     if (instrument) {
       query = query.ilike('instrument', `%${instrument}%`)
     }
     if (from) {
-      query = query.gte('created_at', from)
+      query = query.gte('opened_at', from)
     }
     if (to) {
-      // Include full end day
-      query = query.lte('created_at', to + 'T23:59:59.999Z')
+      query = query.lte('opened_at', to + 'T23:59:59.999Z')
     }
     if (direction && (direction === 'long' || direction === 'short')) {
       query = query.eq('direction', direction)

@@ -23,8 +23,8 @@ export default async function JournalPage() {
         .select('*', { count: 'exact' })
         .eq('user_id', user.id)
         .is('deleted_at', null)
-        .order('created_at', { ascending: false })
-        .range(0, 19),
+        .order('opened_at', { ascending: false, nullsFirst: false })
+        .range(0, 49),
       supabase
         .from('users')
         .select('trading_timezone')

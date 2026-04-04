@@ -73,6 +73,11 @@ export async function PATCH(
       'execution_score',
       'notes',
       'followed_plan',
+      'session',
+      'setup_type',
+      'exit_reason',
+      'mistakes',
+      'market_condition',
     ]
 
     for (const field of allowedFields) {

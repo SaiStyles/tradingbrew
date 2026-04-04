@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useWhisperSTT } from '@/hooks/useWhisperSTT'
-import { createClient } from '@/lib/supabase/client'
 
 type Message = {
   role: 'user' | 'buddy'
@@ -122,51 +121,13 @@ export default function BuddyChat({ buddyName }: { buddyName: string }) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Session opener → Explorer (text only, no TTS)
+  // Session opener → set default greeting
   useEffect(() => {
     if (openerFiredRef.current) return
     openerFiredRef.current = true
-
-    let cancelled = false
-    const fetchOpener = async () => {
-      try {
-        const res = await fetch('/api/buddy/proactive?trigger=session_start')
-        const data = await res.json() as { message: string | null }
-        if (cancelled) return
-        const msg = data.message ?? `Hey! I'm ${buddyName}. Ask me anything about your trading.`
-        setMessages([{ role: 'buddy', content: msg, timestamp: new Date() }])
-      } catch {
-        if (!cancelled) {
-          setMessages([{ role: 'buddy', content: `Hey! I'm ${buddyName}. Ask me anything about your trading.`, timestamp: new Date() }])
-        }
-      } finally {
-        if (!cancelled) setProactiveLoading(false)
-      }
-    }
-    void fetchOpener()
-    return () => { cancelled = true }
+    setMessages([{ role: 'buddy', content: `Hey! I'm ${buddyName}. Ask me anything about your trading.`, timestamp: new Date() }])
+    setProactiveLoading(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // Phase 2: Supabase Realtime proactive push → Explorer
-  useEffect(() => {
-    const supabase = createClient()
-    const channel = supabase
-      .channel('proactive-push')
-      .on(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        'postgres_changes' as any,
-        { event: 'INSERT', schema: 'public', table: 'proactive_queue' },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (payload: any) => {
-          const row = payload?.new as { id: string; message: string; delivered: boolean } | null
-          if (!row?.message || row.delivered) return
-          setMessages(prev => [...prev, { role: 'buddy', content: row.message, timestamp: new Date() }])
-          supabase.from('proactive_queue').update({ delivered: true }).eq('id', row.id).then(() => {})
-        }
-      )
-      .subscribe()
-    return () => { void supabase.removeChannel(channel) }
   }, [])
 
   // ── Recorder: voice → recorder pipeline (silent) ────────

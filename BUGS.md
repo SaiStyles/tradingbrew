@@ -20,9 +20,9 @@ Test trades with absurd values ($3 trillion NQ PnL, closed_at before opened_at) 
 
 ---
 
-## [2026-04-01] Streak card hardcoded 0 days
+## ~~[2026-04-01] Streak card hardcoded 0 days~~ FIXED 2026-04-04
 
-Dashboard streak card always shows "0 days". Real streak logic already exists in StatsClient.tsx — needs to be copied to dashboard. Low effort, low priority.
+Dashboard streak card now computes real streak from last 30 days of trades. Logic ported from StatsClient.tsx.
 
 ---
 

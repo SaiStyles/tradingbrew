@@ -32,7 +32,7 @@ Nobody wants to talk to AI. They want to talk to limbo — and have limbo quietl
 - Database: Supabase (PostgreSQL)
 - Auth: Supabase Auth
 - Storage: Supabase Storage
-- AI Agents: 9-agent pipeline (7 reactive + 2 proactive)
+- AI Agents: 7-agent pipeline
   → Extractor (Haiku) — field extraction + query_type detection
   → Context (Pure TS, no AI) — data fetching from Supabase + Hindsight recall
   → QueryAnalyst (Haiku) — text-to-SQL for historical questions, gated on query_type
@@ -40,8 +40,7 @@ Nobody wants to talk to AI. They want to talk to limbo — and have limbo quietl
   → Buddy (Haiku always) — natural conversation, plain text
   → SaveDetector (Haiku) — save decision
   → Scribe (Haiku) — psychological memory builder, fires post-response via after()
-  → ProactiveGate (Haiku) — inner thoughts: should_speak + mode decision
-  → ProactiveBuddy (Haiku) — unprompted message generation, 9 modes
+  NOTE: ProactiveGate + ProactiveBuddy DELETED (2026-04-04). Recorder handles session flow. BuddyChat uses static greeting.
 - Agent Parser: shared lib/claude/parser.ts
 - Memory: Hindsight (gen2 agentic memory) — semantic recall, Mental Models, reflect()
 - Database Facts: Supabase PostgreSQL (trades, rules, accounts)
@@ -153,8 +152,7 @@ tradingbrew/
 - Portrait fetch runs — Buddy needs it.
 - Returns SSE with token stream + done event.
 
-**Proactive pipeline** (fires without user prompting):
-- ProactiveGate + ProactiveBuddy → called on BuddyChat mount + Vercel cron (Phase 2)
+**Proactive pipeline** — DELETED (2026-04-04). Recorder handles all session flow. BuddyChat uses static greeting.
 
 Every buddy message runs through this pipeline:
 
@@ -245,30 +243,6 @@ SCRIBE (Haiku)
 - should_write: false is valid and frequent — silence is discipline
 - If memory has Buddy implication, adds [Buddy: specific note] inline
 
-PROACTIVE GATE (Haiku) — NEW
-- Inner thoughts layer. Decides whether Buddy should speak unprompted.
-- Input: trigger_type + trader portrait + session stats + lastProactiveAt + daysSinceLastSeen
-- Output: { should_speak: boolean, mode: ProactiveMode, reason: string }
-- Hard rate limit: never fires twice within 30 minutes
-- For session_start: route-level guard skips if session already has messages today
-- 9 modes: greet, celebrate, check_in, intervene, debrief, reconnect, milestone, quiet, banter
-- Silence is better than noise — when in doubt, should_speak = false
-
-PROACTIVE BUDDY (Haiku) — NEW
-- Generates the actual proactive message once gate says should_speak = true
-- Input: mode + trader portrait + context + tradingDate + user (name/personality/tz)
-- Output: plain text, 1-3 sentences, full personality applied
-- Each mode has specific stage directions — emotional context, not a script
-- greet: first open of day, Jarvis moment
-- celebrate: meaningful win acknowledgment
-- check_in: after a loss, presence not analysis
-- intervene: 3+ losses or drawdown — "I need to say something"
-- debrief: session winding down, one final honest word
-- reconnect: returning after 3+ days, no guilt
-- milestone: streak/best day, specific not generic
-- quiet: in app 20+ min with nothing said
-- banter: slow day, pure in-character entertainment, retention through delight
-- Called from: /api/buddy/proactive (Phase 1) + /api/proactive-check cron (Phase 2)
 
 ## Buddy Rules — CRITICAL
 - Use what you know naturally — "Yeah that's a pattern for you" not "you mentioned on March 3rd..."
@@ -357,8 +331,9 @@ PROACTIVE BUDDY (Haiku) — NEW
      robustness for save-detector + query-analyst + analyst; sequential file execution
      required via fileParallelism:false to stay under 50 RPM rate limit)
 - ✅ Trade saving to Supabase — CONFIRMED WORKING.
-- ✅ Trades table schema expansion — done. Added: setup_type, session_time,
-     market_condition, risk_amount, r_multiple, exit_reason.
+- ✅ Trades table schema expansion — migration run 2026-04-04. Added: setup_type (text),
+     exit_reason (text), mistakes (text[] DEFAULT '{}'), market_condition (text).
+     Dropped: take_profit, duration_mins (calculated in code), streaks table, user_news_interactions table.
 - ✅ Proactive Buddy — full 9-agent system. Buddy speaks first on session open.
      Phase 1 (free): /api/buddy/proactive GET, called on BuddyChat mount.
      Phase 2 (Vercel Pro): /api/proactive-check cron, every minute, Supabase Realtime push.
@@ -421,6 +396,30 @@ PROACTIVE BUDDY (Haiku) — NEW
      Connect in Settings → Notifications → deep link → /start token → chat_id stored.
      End Session button in Recorder tab → POST /api/telegram/summary → sends formatted summary.
      Requires: docs/add-telegram.sql + webhook registration + 3 env vars.
+- ✅ Journal — day-grouped layout with per-day AI notes inline. DayHeader shows trade count,
+     win rate, PnL. Load more pagination (50/page). Time + duration on trade cards.
+- ✅ Trade screenshots — upload (drag/drop + multi-select), lightbox with keyboard nav
+     (←→↑↓ + Esc), delete on hover, max 6 per trade, 5MB limit.
+     Bucket: trade-screenshots (public). API: /api/screenshots, /api/screenshots/[id].
+- ✅ Trade detail — entry/exit/stop/size in 1 horizontal row. Entry Time + Exit Time side by side.
+     setup_type, exit_reason, mistakes, session displayed when present.
+- ✅ TradeDrawer — widened to 600px. New trade saves → redirects to /journal/[id].
+     Edit save → onSave() as before. Required fields: instrument, P&L, entry time (shake on fail).
+     Session chips (London/NY/Asia/Overlap), setup_type free text, exit_reason chips
+     (Target hit/Breakeven/Stop out/Manual exit/Time stop/Trailing stop/News/event),
+     mistakes multi-select chips (10 options, plain text strings).
+- ✅ Voice note per trade — record in browser (MediaRecorder), upload to Supabase Storage,
+     playback inline on trade detail. One per trade (voice_note_url column). Replace by re-recording.
+     Bucket: trade-voice-notes (public). API: /api/voice-note (POST/DELETE).
+     Component: TradeVoiceNote.tsx.
+- ✅ Shake animation on form validation failure — globals.css @keyframes shake, .shake class.
+- ✅ Goals page (/goals) — weekly goals with progress ring (red→yellow→green), 4 color-coded types
+     (Performance/Psychology/Process/Risk), optimistic toggle, suggested goals empty state,
+     last week read-only history. API: /api/goals, /api/goals/[id]. Calendar-accurate week_start.
+- ✅ ProactiveGate + ProactiveBuddy DELETED (2026-04-04) — Recorder owns session flow.
+     BuddyChat static greeting. proactive_queue + proactive_log tables disconnected (drop in Supabase).
+     7-agent pipeline now (was 9).
+- ⬜ Journal search/filter (by instrument, emotion, date range, win/loss)
 - ⬜ Tauri desktop app
 
 ## Debugging Philosophy

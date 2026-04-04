@@ -132,16 +132,18 @@ export interface TradeRecord {
   entry_price: number | null
   exit_price: number | null
   stop_loss: number | null
-  take_profit: number | null
   pnl: number | null
   position_size: number | null
+  session: 'london' | 'new_york' | 'asia' | 'overlap' | null
   opened_at: string | null
   closed_at: string | null
-  duration_mins: number | null
   emotion_tag: EmotionTag | null
   execution_score: number | null
   rr: string | null
   market_condition: string | null
+  setup_type: string | null
+  exit_reason: string | null
+  mistakes: string[]
   notes: string | null
   voice_note_url: string | null
   followed_plan: boolean | null
@@ -270,45 +272,6 @@ export const QueryAnalystOutputSchema = z.object({
 export type QueryAnalystOutput = z.infer<typeof QueryAnalystOutputSchema>
 
 // ─────────────────────────────────────────────────────────────────
-// Proactive Buddy types
-// ─────────────────────────────────────────────────────────────────
-
-export type ProactiveMode =
-  | 'greet'      // First open of trading day — Jarvis moment
-  | 'celebrate'  // Just logged a meaningful win
-  | 'check_in'   // Just logged a loss — presence, not analysis
-  | 'intervene'  // 3+ losses or drawdown threshold — "I need to say something"
-  | 'debrief'    // Session winding down — one final honest word
-  | 'reconnect'  // Coming back after 3+ days — no guilt, just warmth
-  | 'milestone'  // Streak / best day — specific celebration
-  | 'quiet'      // In app 20+ min with nothing said — light check-in
-  | 'banter'     // Slow day, nothing happening — in-character entertainment, retention through delight
-
-export interface ProactiveGateOutput {
-  should_speak: boolean
-  mode: ProactiveMode
-  reason: string
-}
-
-export interface ProactiveParams {
-  trigger_type: string
-  traderPortrait: string
-  tradingDate: string
-  context: ContextPacket
-  lastProactiveAt: string | null
-  daysSinceLastSeen: number
-  user: {
-    buddy_name: string
-    buddy_personality: string
-    trading_timezone: string
-  }
-}
-
-export const ProactiveGateSchema = z.object({
-  should_speak: z.boolean(),
-  mode: z.enum(['greet', 'celebrate', 'check_in', 'intervene', 'debrief', 'reconnect', 'milestone', 'quiet', 'banter']),
-  reason: z.string(),
-})
 
 export const SaveDetectorOutputSchema = z.object({
   save_trade: z.boolean(),

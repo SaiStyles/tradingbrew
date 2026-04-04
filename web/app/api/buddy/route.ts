@@ -162,7 +162,8 @@ export async function POST(request: NextRequest) {
     const traderPortrait = freshPortrait || session.trader_portrait
     if (freshPortrait) session.trader_portrait = freshPortrait
 
-<<<<<<< ours
+    console.log('[agents] extractor + context + portrait:', Date.now() - t0, 'ms', traderPortrait ? '(portrait ready)' : '(no portrait yet)')
+
     // Fallback: Haiku misses rules/violations questions — classify them here if extractor returned null
     if (isExplorer && extracted.query_type === null) {
       const lower = message.toLowerCase()
@@ -171,9 +172,6 @@ export async function POST(request: NextRequest) {
         extracted.query_type = 'historical_analysis'
       }
     }
-=======
-    console.log('[agents] extractor + context + portrait:', Date.now() - t0, 'ms', traderPortrait ? '(portrait ready)' : '(no portrait yet)')
->>>>>>> theirs
 
     // Step 2.5: Query Agent — explorer only, runs only for historical analysis questions
     // QueryAnalyst owns all routing decisions: what SQL to generate, whether to fetch psychology_log, needs_sql flag.

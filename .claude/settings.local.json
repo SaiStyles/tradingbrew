@@ -67,7 +67,8 @@
       "WebFetch(domain:upstash.com)",
       "WebFetch(domain:proactllm.github.io)",
       "WebFetch(domain:docs.vad.ricky0123.com)",
-      "WebFetch(domain:discord.com)"
+      "WebFetch(domain:discord.com)",
+      "Bash(ls:*)"
     ],
     "defaultMode": "auto"
   }
