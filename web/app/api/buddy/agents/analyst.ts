@@ -24,7 +24,7 @@ export async function runAnalyst(
     const anthropic = new Anthropic({ apiKey })
 
     const todaysTrades = context.todaysTrades.length > 0
-      ? JSON.stringify(context.todaysTrades.map(t => ({ instrument: t.instrument, direction: t.direction, pnl: t.pnl, execution_score: t.execution_score, emotion_tag: t.emotion_tag, opened_at: t.opened_at, closed_at: t.closed_at })))
+      ? JSON.stringify(context.todaysTrades.map(t => ({ instrument: t.instrument, direction: t.direction, pnl: t.pnl, execution_score: t.execution_score, emotion_tag: t.emotion_tag, followed_plan: t.followed_plan, session: t.session, exit_reason: t.exit_reason, mistakes: t.mistakes, opened_at: t.opened_at, closed_at: t.closed_at })))
       : 'No trades yet today.'
     const activeRules = context.active_rules.length > 0
       ? context.active_rules.map(r => `- ${r.raw_text} (id: ${r.id})`).join('\n')

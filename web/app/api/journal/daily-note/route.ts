@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { withRetry } from '@/lib/claude/retry'
+import { getTodayInTz } from '@/app/api/buddy/timezone'
 import type { TradeRecord } from '@/types/trade'
 
 export async function GET(request: NextRequest) {
@@ -48,6 +49,13 @@ export async function GET(request: NextRequest) {
       if (!newerTrade && !newerObs) {
         return NextResponse.json({ note: cached.note, cached: true })
       }
+    }
+
+    // Past day with no cached note — don't generate retroactively
+    const timezone = request.nextUrl.searchParams.get('timezone') ?? 'UTC'
+    const today = getTodayInTz(timezone)
+    if (date < today) {
+      return NextResponse.json({ note: null })
     }
 
     // Fetch trades for that day

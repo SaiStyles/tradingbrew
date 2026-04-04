@@ -478,7 +478,7 @@ export default function JournalClient({ initialTrades, initialTotal, tradingTime
 
                 {/* AI note for this day — renders nothing if no note */}
                 <div className="mb-5">
-                  <DailyNote date={group.date} />
+                  <DailyNote date={group.date} timezone={tradingTimezone} />
                 </div>
 
                 {/* Trade grid */}

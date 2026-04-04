@@ -17,7 +17,13 @@ trades (the trader's full history):
 - emotion_tag: emotional state when entering — values: confident, hesitant, FOMO, revenge, bored, calm, frustrated, euphoric
 - execution_score: integer 1–10, self-rating of execution quality, may be null
 - followed_plan: boolean — true if trader followed their rules, may be null
-- notes: free text, may be null
+- session: trading session — values: london, new_york, asia, overlap — may be null
+- exit_reason: how the trade was closed — values: 'Target hit', 'Breakeven', 'Stop out', 'Manual exit', 'Time stop', 'Trailing stop', 'News/event' — may be null
+- rr: risk/reward as free text (e.g. '2R', '1:3', '2.5R') — may be null
+- setup_type: free text describing the trade setup — may be null
+- mistakes: text array of mistakes made (e.g. '{\"entered too early\",\"moved stop\"}') — may be null or empty
+- market_condition: free text describing market context — may be null
+- position_size: trade size in units/contracts — may be null
 - incomplete: boolean — true if trade fields are missing
 - deleted_at: null for active trades
 - created_at: record creation timestamp
@@ -36,7 +42,7 @@ rules (the trader's self-defined trading rules):
 rule_violations (every time the Analyst detected a rule breach):
 - rule_id: UUID — links to rules.id
 - trade_id: UUID — the trade that triggered the violation, may be null
-- created_at: when the violation was recorded (timestamptz)
+- violated_at: when the violation was recorded (timestamptz)
 - analyst_reasoning: plain text explanation of why the rule was violated
 
 JOINS for rule analytics:
@@ -45,13 +51,16 @@ JOINS for rule analytics:
 - Note: rule_violations does NOT have user_id — filter via rules JOIN (user_id is on rules table)
 
 news_events (economic calendar — may be empty for past events):
-- event_name: e.g. 'FOMC Rate Decision', 'CPI', 'NFP'
+- title: event name e.g. 'FOMC Rate Decision', 'CPI', 'NFP'
 - scheduled_at: event timestamp (timestamptz)
 - impact: 'high', 'medium', 'low'
 - currency: affected currency
 
 RULES FOR SQL GENERATION:
 - Trader slang: "bad trade" / "ass trade" / "terrible trade" / "disaster" / "worst" / "blowup" = pnl < 0 (losing trade). "big win" / "best trade" / "crusher" = pnl > 0 ORDER BY pnl DESC. "last [X] trade" = ORDER BY opened_at DESC LIMIT 1.
+- Session slang: "London session" / "London open" = session = 'london'. "NY" / "New York" / "US session" / "morning session" (ET) = session = 'new_york'. "Asia" / "overnight" = session = 'asia'. "overlap" = session = 'overlap'.
+- Exit slang: "stopped out" / "got stopped" = exit_reason = 'Stop out'. "hit target" / "took profit" / "TP" = exit_reason = 'Target hit'. "scratched" / "breakeven" / "BE" = exit_reason = 'Breakeven'.
+- For mistakes array queries: use mistakes && ARRAY['mistake text'] or array_length(mistakes, 1) > 0 to find trades with any mistakes.
 - Always filter: deleted_at IS NULL on trades
 - Never include user_id in WHERE — it will be injected automatically
 - Always include LIMIT 100 unless the query is purely an aggregate (COUNT, SUM, AVG, etc.)
