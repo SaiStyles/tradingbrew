@@ -15,7 +15,8 @@ const emptyExtracted = {
   opened_at: null, closed_at: null, position_size: null,
   emotion: null, execution_score: null, followed_plan: null,
   market_condition: null, confirmed: false, declined: false,
-  has_trade: false, query_type: null, query_subtype: null,
+  has_trade: false, exit_reason: null, rr: null, session: null,
+  query_type: null, query_subtype: null,
 }
 const noAnalysis = {
   violations: [], warnings: [], patterns: [], positives: [],

@@ -3,7 +3,7 @@ import { runExtractor } from '@/app/api/buddy/agents/extractor'
 import { runAnalyst } from '@/app/api/buddy/agents/analyst'
 import { runSaveDetector } from '@/app/api/buddy/agents/save-detector'
 import { runScribe } from '@/app/api/buddy/agents/scribe'
-import type { ContextPacket, ChatMessage } from '@/types/trade'
+import type { ContextPacket } from '@/types/trade'
 
 const TZ = 'America/New_York'
 const DATE = '2026-03-23'
@@ -48,13 +48,8 @@ describe('Pipeline integration (live API)', () => {
     // Good trade, calm emotion — no intervention
     expect(analyst.intervention_needed).toBe(false)
 
-    // Step 3: SaveDetector (simulated conversation built up)
-    const messages: ChatMessage[] = [
-      { role: 'user', content: userMessage },
-      { role: 'assistant', content: 'Nice trade! 8 out of 10 execution — what made it click today?' },
-    ]
+    // Step 3: SaveDetector (recorder mode — reads extracted fields only)
     const saveResult = await runSaveDetector({
-      messages,
       extracted,
       tradingDate: DATE,
       tradingTimezone: TZ,
@@ -68,7 +63,7 @@ describe('Pipeline integration (live API)', () => {
       buddyReply: 'Nice trade! Execution was solid.',
       extracted,
       context: emptyContext,
-      recentMessages: messages,
+      recentMessages: [],
       existingMemories: [],
       tradingTimezone: TZ,
     })
@@ -84,12 +79,7 @@ describe('Pipeline integration (live API)', () => {
     expect(extracted.instrument?.toUpperCase()).toBe('NQ')
     // No pnl, no emotion, no execution_score
 
-    const messages: ChatMessage[] = [
-      { role: 'user', content: userMessage },
-      { role: 'assistant', content: 'Got it! How did it go — did you make or lose money?' },
-    ]
     const saveResult = await runSaveDetector({
-      messages,
       extracted,
       tradingDate: DATE,
       tradingTimezone: TZ,

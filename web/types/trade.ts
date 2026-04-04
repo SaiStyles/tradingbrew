@@ -18,6 +18,9 @@ export interface ExtractedData {
   execution_score: number | null
   followed_plan: boolean | null
   market_condition: string | null
+  exit_reason: string | null
+  rr: string | null
+  session: 'london' | 'new_york' | 'asia' | 'overlap' | null
   confirmed: boolean
   declined: boolean
   has_trade: boolean
@@ -195,11 +198,9 @@ export interface BuddyParams {
 }
 
 export interface SaveDetectorParams {
-  messages: ChatMessage[]
   extracted: ExtractedData
   tradingDate: string
   tradingTimezone: string
-  mode?: 'recorder' | 'explorer'
 }
 
 export interface ScribeParams {
@@ -235,6 +236,12 @@ export const ExtractedDataSchema = z.object({
   execution_score: z.number().nullable(),
   followed_plan: z.boolean().nullable(),
   market_condition: z.string().nullable(),
+  exit_reason: z.string().nullable(),
+  rr: z.string().nullable(),
+  session: z.preprocess(
+    (v) => typeof v === 'string' ? v.toLowerCase().replace(/\s+/g, '_') : v,
+    z.enum(['london', 'new_york', 'asia', 'overlap']).nullable()
+  ),
   confirmed: z.boolean(),
   declined: z.boolean(),
   has_trade: z.boolean(),
@@ -285,7 +292,11 @@ export const SaveDetectorOutputSchema = z.object({
     emotion_tag: z.string().nullable().optional(),
     execution_score: z.number().nullable().optional(),
     rr: z.string().nullable().optional(),
-    notes: z.string().nullable().optional(),
+    exit_reason: z.string().nullable().optional(),
+    session: z.preprocess(
+      (v) => typeof v === 'string' ? v.toLowerCase().replace(/\s+/g, '_') : v,
+      z.enum(['london', 'new_york', 'asia', 'overlap']).nullable().optional()
+    ),
     followed_plan: z.boolean().nullable().optional(),
   }).nullable(),
   reply: z.string().default(''),

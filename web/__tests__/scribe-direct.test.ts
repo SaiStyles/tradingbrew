@@ -30,7 +30,7 @@ describe('Scribe — direct output tests', () => {
         opened_at: '2026-03-24T14:30:00-04:00', closed_at: '2026-03-24T14:48:00-04:00',
         position_size: null, emotion: 'FOMO', execution_score: null,
         followed_plan: false, confirmed: false, declined: false, has_trade: true,
-        market_condition: null, query_type: null, query_subtype: null,
+        market_condition: null, exit_reason: null, rr: null, session: null, query_type: null, query_subtype: null,
       },
       context: {
         ...BASE_CONTEXT,
@@ -86,7 +86,7 @@ describe('Scribe — direct output tests', () => {
         opened_at: '2026-03-24T10:15:00-04:00', closed_at: '2026-03-24T10:34:00-04:00',
         position_size: null, emotion: 'FOMO', execution_score: 3,
         followed_plan: false, confirmed: false, declined: false, has_trade: true,
-        market_condition: null, query_type: null, query_subtype: null,
+        market_condition: null, exit_reason: null, rr: null, session: null, query_type: null, query_subtype: null,
       },
       context: {
         ...BASE_CONTEXT,
@@ -114,7 +114,7 @@ describe('Scribe — direct output tests', () => {
         opened_at: '2026-03-24T09:30:00-04:00', closed_at: null,
         position_size: null, emotion: 'FOMO', execution_score: null,
         followed_plan: null, confirmed: false, declined: false, has_trade: true,
-        market_condition: null, query_type: null, query_subtype: null,
+        market_condition: null, exit_reason: null, rr: null, session: null, query_type: null, query_subtype: null,
       },
       context: {
         ...BASE_CONTEXT,

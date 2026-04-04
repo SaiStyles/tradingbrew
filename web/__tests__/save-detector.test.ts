@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { runSaveDetector } from '@/app/api/buddy/agents/save-detector'
-import type { ChatMessage, ExtractedData } from '@/types/trade'
+import type { ExtractedData } from '@/types/trade'
 
 const TZ = 'America/New_York'
 const DATE = '2026-03-23'
@@ -12,24 +12,26 @@ const emptyExtracted: ExtractedData = {
   emotion: null, execution_score: null,
   followed_plan: null, market_condition: null,
   confirmed: false, declined: false, has_trade: false,
+  exit_reason: null, rr: null, session: null,
   query_type: null, query_subtype: null,
 }
 
-const fullConversation: ChatMessage[] = [
-  { role: 'user', content: 'took a long on NQ, made $400' },
-  { role: 'assistant', content: 'Nice trade! When did you get in and out?' },
-  { role: 'user', content: 'entered at 9:30am, closed at 10:15am' },
-  { role: 'assistant', content: 'Got it. How were you feeling?' },
-  { role: 'user', content: 'felt confident, execution was solid, like an 8 out of 10' },
-  { role: 'assistant', content: 'Great discipline. Did you follow your plan?' },
-  { role: 'user', content: 'yes followed it exactly' },
-]
+const fullExtracted: ExtractedData = {
+  ...emptyExtracted,
+  has_trade: true,
+  instrument: 'NQ',
+  direction: 'long',
+  pnl: 400,
+  opened_at: `${DATE}T09:30:00-05:00`,
+  emotion: 'confident',
+  execution_score: 8,
+  followed_plan: true,
+}
 
 describe('SaveDetector agent (live API)', () => {
   it('saves trade when all minimum fields present', async () => {
     const result = await runSaveDetector({
-      messages: fullConversation,
-      extracted: { ...emptyExtracted, has_trade: true, instrument: 'NQ', direction: 'long', pnl: 400 },
+      extracted: fullExtracted,
       tradingDate: DATE,
       tradingTimezone: TZ,
     })
@@ -39,58 +41,42 @@ describe('SaveDetector agent (live API)', () => {
   })
 
   it('does NOT save when opened_at missing', async () => {
-    const partial: ChatMessage[] = [
-      { role: 'user', content: 'NQ long, made $300, felt calm' },
-    ]
     const result = await runSaveDetector({
-      messages: partial,
-      extracted: { ...emptyExtracted, has_trade: true },
+      extracted: { ...fullExtracted, opened_at: null },
       tradingDate: DATE,
       tradingTimezone: TZ,
     })
     expect(result.save_trade).toBe(false)
   })
 
-  it('does NOT save when emotion_tag missing', async () => {
-    const partial: ChatMessage[] = [
-      { role: 'user', content: 'NQ long, made $300, entered 9:30, execution 8' },
-    ]
+  it('does NOT save when emotion missing', async () => {
     const result = await runSaveDetector({
-      messages: partial,
-      extracted: { ...emptyExtracted, has_trade: true },
+      extracted: { ...fullExtracted, emotion: null },
       tradingDate: DATE,
       tradingTimezone: TZ,
     })
     expect(result.save_trade).toBe(false)
   })
 
-  it('respects duplicate prevention marker', async () => {
-    const withMarker: ChatMessage[] = [
-      ...fullConversation,
-      {
-        role: 'user',
-        content: '[SYSTEM: Trade already saved — NQ long $400 at 2026-03-23T09:30:00-05:00. Do not save this trade again under any circumstances.]',
+  it('does NOT save when pnl missing', async () => {
+    const result = await runSaveDetector({
+      extracted: { ...fullExtracted, pnl: null },
+      tradingDate: DATE,
+      tradingTimezone: TZ,
+    })
+    expect(result.save_trade).toBe(false)
+  })
+
+  it('saves short trade with correct direction', async () => {
+    const result = await runSaveDetector({
+      extracted: {
+        ...fullExtracted,
+        instrument: 'ES',
+        direction: 'short',
+        pnl: -150,
+        emotion: 'frustrated',
+        followed_plan: false,
       },
-      { role: 'user', content: 'NQ long, made $400' },
-    ]
-    const result = await runSaveDetector({
-      messages: withMarker,
-      extracted: { ...emptyExtracted, has_trade: true },
-      tradingDate: DATE,
-      tradingTimezone: TZ,
-    })
-    expect(result.save_trade).toBe(false)
-  })
-
-  it('saves trade with correct direction', async () => {
-    const shortConvo: ChatMessage[] = [
-      { role: 'user', content: 'shorted ES, lost $150, entered 10am, felt frustrated, execution 4 out of 10' },
-      { role: 'assistant', content: 'Tough one. Did you follow your plan?' },
-      { role: 'user', content: 'no, went off plan' },
-    ]
-    const result = await runSaveDetector({
-      messages: shortConvo,
-      extracted: { ...emptyExtracted, has_trade: true },
       tradingDate: DATE,
       tradingTimezone: TZ,
     })
@@ -99,10 +85,9 @@ describe('SaveDetector agent (live API)', () => {
     expect(result.trade_data?.pnl).toBe(-150)
   })
 
-  it('execution_score is clamped 1-10 in route (verify it returns a number)', async () => {
+  it('execution_score is a number when present', async () => {
     const result = await runSaveDetector({
-      messages: fullConversation,
-      extracted: { ...emptyExtracted, has_trade: true },
+      extracted: fullExtracted,
       tradingDate: DATE,
       tradingTimezone: TZ,
     })

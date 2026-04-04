@@ -11,7 +11,6 @@ export type UserSettings = {
   trading_timezone: string | null
   buddy_name: string | null
   buddy_personality: string | null
-  buddy_voice_id: string | null
   notif_morning: boolean | null
   notif_news: boolean | null
   notif_violations: boolean | null
@@ -135,14 +134,6 @@ const PERSONALITY_LABELS: Record<string, string> = {
   gordon_gekko: 'Aggressive, profit-focused, loves winners',
 }
 
-const VOICES = [
-  { value: 'nova',    label: 'Nova',    description: 'Warm, natural — default' },
-  { value: 'alloy',   label: 'Alloy',   description: 'Balanced, neutral' },
-  { value: 'echo',    label: 'Echo',    description: 'Clean, male' },
-  { value: 'onyx',    label: 'Onyx',    description: 'Deep, authoritative' },
-  { value: 'shimmer', label: 'Shimmer', description: 'Light, female' },
-  { value: 'fable',   label: 'Fable',   description: 'Expressive, UK-accented' },
-]
 
 const ACCOUNT_TYPES: { value: AccountType; label: string }[] = [
   { value: 'prop_firm', label: 'Prop Firm' },
@@ -459,7 +450,6 @@ function BuddyTab({
     isPreset ? stored : 'custom'
   )
   const [customText, setCustomText] = useState(isPreset ? '' : stored)
-  const [selectedVoice, setSelectedVoice] = useState(initialSettings.buddy_voice_id ?? 'nova')
   const [saving, setSaving] = useState(false)
 
   const previewPersonality =
@@ -478,7 +468,6 @@ function BuddyTab({
         body: JSON.stringify({
           buddy_name: buddyName.trim() || null,
           buddy_personality: personality || null,
-          buddy_voice_id: selectedVoice,
         }),
       })
       if (!res.ok) throw new Error()
@@ -555,41 +544,6 @@ function BuddyTab({
           )}
         </div>
 
-        {/* Voice */}
-        <div>
-          <h2 className="text-lg font-semibold text-white mb-1">Buddy Voice</h2>
-          <p className="text-zinc-500 text-sm mb-4">
-            Powered by OpenAI TTS. Preview voices at{' '}
-            <a
-              href="https://platform.openai.com/docs/guides/text-to-speech"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-400 hover:underline"
-            >
-              platform.openai.com
-            </a>
-            .
-          </p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-w-2xl">
-            {VOICES.map((v) => (
-              <button
-                key={v.value}
-                onClick={() => setSelectedVoice(v.value)}
-                className={`text-left p-4 rounded-xl border transition-all ${
-                  selectedVoice === v.value
-                    ? 'border-blue-500 bg-blue-500/10'
-                    : 'border-zinc-800 bg-zinc-900 hover:border-zinc-600'
-                }`}
-              >
-                <p className={`font-medium text-sm ${selectedVoice === v.value ? 'text-blue-400' : 'text-white'}`}>
-                  {v.label}
-                </p>
-                <p className="text-zinc-500 text-xs mt-1">{v.description}</p>
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* Preview */}
         <div className="max-w-2xl p-4 bg-zinc-900 border border-zinc-800 rounded-xl">
           <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Preview</p>
@@ -598,11 +552,6 @@ function BuddyTab({
             <span className="text-white font-medium">{buddyName.trim() || 'Brew'}</span> will
             speak like:{' '}
             <span className="text-zinc-400 italic">{previewPersonality}</span>
-            {' '}in the{' '}
-            <span className="text-white font-medium">
-              {VOICES.find(v => v.value === selectedVoice)?.label ?? 'Nova'}
-            </span>
-            {' '}voice.
           </p>
         </div>
       </div>

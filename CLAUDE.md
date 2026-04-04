@@ -259,9 +259,8 @@ SCRIBE (Haiku)
 - After a bad trade, Buddy reads the room first
 - Discipline comes from relationship, not locked features
 - Gentle nudge always beats a mandatory gate
-- Collect fields in order: instrument → direction →
-  pnl → times → prices → emotion → followed_plan
-  → execution_score (last, triggers save)
+- Never ask for trade fields — Recorder handles all trade capture
+- Explorer/Analyst tab is pure analysis only
 
 ## Current Build Status
 - ✅ Auth, middleware, onboarding, dashboard,
@@ -354,8 +353,9 @@ SCRIBE (Haiku)
      Never blocks SSE response. Buddy uses previous turn's analysis (one turn behind by design).
 - ✅ ensureBank once per session — session flag `ensureBank_called` prevents duplicate Hindsight
      bank-creation calls. Reduced from 2 calls/message to 1 call/session lifetime.
-- ✅ max_tokens reduced — Extractor: 150, Analyst: 300, SaveDetector: 200, Scribe: 300, QueryAnalyst: 400.
+- ✅ max_tokens reduced — Extractor: 220, Analyst: 300, SaveDetector: 260, Scribe: 300, QueryAnalyst: 400.
      Buddy unchanged (300 regular / 500 with historicalQuery).
+     (Extractor/SaveDetector bumped to fit new fields: exit_reason, rr, session)
 - ✅ Recorder + Analyst UI — BuddyChat split into two tabs. Recorder tab: vintage tape reel SVG,
      voice input, silent pipeline, recent captures log. Analyst tab: text-only chat, SSE streaming.
      Toggle at top of card. Defaults to Recorder.
@@ -419,6 +419,18 @@ SCRIBE (Haiku)
 - ✅ ProactiveGate + ProactiveBuddy DELETED (2026-04-04) — Recorder owns session flow.
      BuddyChat static greeting. proactive_queue + proactive_log tables disconnected (drop in Supabase).
      7-agent pipeline now (was 9).
+- ✅ Extractor/SaveDetector full field pipeline (2026-04-04) — exit_reason, rr, session added to
+     both agents. Extractor multiple-trade guard added (extract first trade only).
+- ✅ Extractor/SaveDetector congruence hardened (2026-04-04):
+     emotion_tag fallback: td.emotion_tag ?? extracted.emotion ?? null (field name mismatch fixed)
+     exit_reason fallback: td.exit_reason ?? extracted.exit_reason ?? null
+     normalizeEmotion() in route.ts: maps near-misses to valid enum, drops unknowns (DB CHECK guard)
+     session z.preprocess: "London"/"New York" normalized before enum — whole-extraction failure prevented
+     Scribe gate fixed: also fires when extracted.has_trade (was dead in recorder mode)
+     VAD double-fire: isRecorderProcessingRef (useRef) guards concurrent API calls
+- ✅ Buddy field-collection removed (2026-04-04) — Explorer tab is pure analysis. Hard rule added:
+     never ask for trade fields. Recorder owns all trade logging.
+- ✅ Voice selector removed from Settings (2026-04-04) — TTS removed from chat path, selector was dead UI.
 - ⬜ Journal search/filter (by instrument, emotion, date range, win/loss)
 - ⬜ Tauri desktop app
 

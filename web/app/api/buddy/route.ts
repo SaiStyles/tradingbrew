@@ -1,5 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, after } from 'next/server'
+
+export const runtime = 'nodejs'
 import type { ChatMessage, AnalystReport, ExtractedData } from '@/types/trade'
 import { runExtractor } from './agents/extractor'
 import { runContext } from './agents/context'
@@ -41,6 +43,26 @@ function defaultSession(): SessionState {
 }
 
 // ------------------------------------------------------------------
+// Emotion normalization — map free-text emotions to valid EmotionTag enum values
+// ------------------------------------------------------------------
+
+const VALID_EMOTIONS = new Set(['confident', 'hesitant', 'FOMO', 'revenge', 'bored', 'calm', 'frustrated', 'euphoric'])
+const EMOTION_MAP: Record<string, string> = {
+  nervous: 'hesitant', anxious: 'hesitant', scared: 'hesitant', uncertain: 'hesitant', worried: 'hesitant',
+  panicked: 'frustrated', angry: 'frustrated', annoyed: 'frustrated', upset: 'frustrated',
+  greedy: 'FOMO', excited: 'FOMO', impatient: 'FOMO',
+  happy: 'confident', good: 'confident', strong: 'confident',
+}
+
+function normalizeEmotion(raw: string | null): string | null {
+  if (!raw) return null
+  if (VALID_EMOTIONS.has(raw)) return raw          // exact match (handles 'FOMO' case)
+  const lower = raw.toLowerCase()
+  if (VALID_EMOTIONS.has(lower)) return lower      // lowercase match
+  return EMOTION_MAP[lower] ?? null                // near-miss map, or drop
+}
+
+// ------------------------------------------------------------------
 // Route handler — orchestrator only, no AI calls here
 // ------------------------------------------------------------------
 
@@ -68,7 +90,7 @@ export async function POST(request: NextRequest) {
     const step1Timeout = new Promise<null>(resolve => setTimeout(() => resolve(null), 4000))
     const step1Result = await Promise.race([
       Promise.all([
-        supabase.from('users').select('id, buddy_name, buddy_personality, trading_timezone, buddy_voice_id').eq('id', user.id).single(),
+        supabase.from('users').select('id, buddy_name, buddy_personality, trading_timezone').eq('id', user.id).single(),
         supabase
           .schema('public')
           .from('sessions')
@@ -132,6 +154,7 @@ export async function POST(request: NextRequest) {
       position_size: null,
       emotion: null, execution_score: null,
       followed_plan: null, market_condition: null,
+      exit_reason: null, rr: null, session: null,
       confirmed: false, declined: false, has_trade: false,
       query_type: null, query_subtype: null,
     }
@@ -256,7 +279,7 @@ export async function POST(request: NextRequest) {
       : Promise.resolve(null)
     // SaveDetector: recorder only. Explorer never saves trades.
     const saveDetectorPromise = (isRecorder && (extracted.has_trade || session.messages.length > 0))
-      ? runSaveDetector({ messages: conversationSoFar, extracted, tradingDate, tradingTimezone, mode: 'recorder' })
+      ? runSaveDetector({ extracted, tradingDate, tradingTimezone })
       : Promise.resolve({ reply: '', save_trade: false, trade_data: null })
 
     // Analyst violations writer — fires when Analyst finishes, never blocks the response
@@ -295,7 +318,8 @@ export async function POST(request: NextRequest) {
     } = { buddyReply: '', todayObservations: [] }
 
     after(async () => {
-      if (!scribePayload.buddyReply) return
+      // Explorer: runs when Buddy replied. Recorder: runs when a trade was captured.
+      if (!scribePayload.buddyReply && !extracted.has_trade) return
       try {
         const supabaseScribe = await createClient()
 
@@ -360,22 +384,11 @@ export async function POST(request: NextRequest) {
           console.log('[agents] save-detector done:', Date.now() - t1, 'ms')
           console.log('[save-detector] result:', JSON.stringify({ save_trade: saveResult.save_trade, instrument: saveResult.trade_data?.instrument, pnl: saveResult.trade_data?.pnl }))
 
-          // Update conversation history — explorer adds buddy reply, recorder adds user turn only
-          const updatedMessages: ChatMessage[] = isExplorer
-            ? [
-                ...session.messages,
-                { role: 'user' as const, content: message },
-                { role: 'assistant' as const, content: fullReply },
-              ].slice(-20)
-            : [
-                ...session.messages,
-                { role: 'user' as const, content: message },
-              ].slice(-20)
-
           // Save trade if SaveDetector decided to
           const saveDetectorFired = extracted.has_trade || session.messages.length > 0
           let savedTrade = null
           let tradeInsertError: string | null = null
+          let systemMarker: ChatMessage | null = null
           if (saveResult.save_trade && saveResult.trade_data) {
             const td = saveResult.trade_data
             if (td.execution_score != null) {
@@ -385,7 +398,7 @@ export async function POST(request: NextRequest) {
             console.log('[buddy] SAVING TRADE:', JSON.stringify(td, null, 2))
             try {
               const closedAt = td.closed_at ?? nowInTz(tradingTimezone)
-              const incomplete = !td.opened_at || !td.direction
+              const incomplete = !(td.opened_at ?? extracted.opened_at) || !(td.direction ?? extracted.direction)
               const currentSessionId = sessionResult.data?.id ?? null
 
               const { data: insertedTrade, error: insertError } = await supabase
@@ -399,9 +412,11 @@ export async function POST(request: NextRequest) {
                   position_size: td.position_size ?? null,
                   opened_at: td.opened_at ?? null,
                   closed_at: closedAt,
-                  emotion_tag: td.emotion_tag ?? null,
+                  emotion_tag: normalizeEmotion(td.emotion_tag ?? extracted.emotion ?? null),
                   execution_score: td.execution_score ?? null,
                   rr: td.rr ?? null,
+                  exit_reason: td.exit_reason ?? extracted.exit_reason ?? null,
+                  session: td.session ?? extracted.session ?? null,
                   market_condition: extracted.market_condition ?? null,
                   notes: null,
                   followed_plan: td.followed_plan ?? null,
@@ -417,16 +432,31 @@ export async function POST(request: NextRequest) {
                 console.log('[buddy] trade saved:', insertedTrade?.id)
                 savedTrade = insertedTrade
                 session.last_trade_id = insertedTrade?.id ?? null
-                updatedMessages.push({
+                systemMarker = {
                   role: 'user' as const,
                   content: `[SYSTEM: Trade already saved — ${td.instrument} ${td.direction} $${td.pnl} at ${td.opened_at}. Do not save this trade again under any circumstances.]`,
-                })
+                }
               }
             } catch (e) {
               console.error('[buddy] trade save exception:', e)
               tradeInsertError = e instanceof Error ? e.message : 'unknown exception'
             }
           }
+
+          // Update conversation history — built immutably with optional system marker included
+          const updatedMessages: ChatMessage[] = [
+            ...(isExplorer
+              ? [
+                  ...session.messages,
+                  { role: 'user' as const, content: message },
+                  { role: 'assistant' as const, content: fullReply },
+                ]
+              : [
+                  ...session.messages,
+                  { role: 'user' as const, content: message },
+                ]),
+            ...(systemMarker ? [systemMarker] : []),
+          ].slice(-20)
 
           // Patch late execution_score onto last saved trade
           if (!saveResult.save_trade && session.last_trade_id && extracted.execution_score != null) {

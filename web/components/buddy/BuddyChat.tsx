@@ -116,6 +116,7 @@ export default function BuddyChat({ buddyName }: { buddyName: string }) {
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const openerFiredRef = useRef(false)
+  const isRecorderProcessingRef = useRef(false)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -132,6 +133,9 @@ export default function BuddyChat({ buddyName }: { buddyName: string }) {
 
   // ── Recorder: voice → recorder pipeline (silent) ────────
   const handleRecorderTranscript = useCallback(async (text: string) => {
+    // Ref guard — prevents concurrent API calls if VAD fires two segments quickly
+    if (isRecorderProcessingRef.current) return
+    isRecorderProcessingRef.current = true
     setRecorderStatus('processing')
     try {
       const res = await fetch('/api/buddy', {
@@ -173,7 +177,10 @@ export default function BuddyChat({ buddyName }: { buddyName: string }) {
         if (done) break
       }
     } catch { /* silent — recorder never shows errors */ }
-    finally { setRecorderStatus('listening') }
+    finally {
+      isRecorderProcessingRef.current = false
+      setRecorderStatus('listening')
+    }
   }, [])
 
   const stt = useWhisperSTT({

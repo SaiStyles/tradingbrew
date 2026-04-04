@@ -7,7 +7,7 @@ import { runExtractor } from '@/app/api/buddy/agents/extractor'
 import { runSaveDetector } from '@/app/api/buddy/agents/save-detector'
 import { runAnalyst } from '@/app/api/buddy/agents/analyst'
 import { runScribe } from '@/app/api/buddy/agents/scribe'
-import type { ContextPacket, ChatMessage, ExtractedData } from '@/types/trade'
+import type { ContextPacket, ExtractedData } from '@/types/trade'
 
 const TZ = 'America/New_York'
 const DATE = '2026-03-24'
@@ -27,6 +27,7 @@ const emptyExtracted: ExtractedData = {
   emotion: null, execution_score: null, followed_plan: null,
   market_condition: null,
   confirmed: false, declined: false, has_trade: false,
+  exit_reason: null, rr: null, session: null,
   query_type: null, query_subtype: null,
 }
 
@@ -44,61 +45,48 @@ describe('Scenario 1: Full trade in one message', () => {
     expect(extracted.pnl).toBe(-450)
     expect(extracted.emotion).toBe('FOMO')
 
-    const messages: ChatMessage[] = [
-      { role: 'user', content: msg },
-      { role: 'assistant', content: 'Tough one. How do you feel about it now?' },
-    ]
-    const save = await runSaveDetector({ messages, extracted, tradingDate: DATE, tradingTimezone: TZ })
-    // Missing opened_at timestamp — should NOT save yet (time was vague "10am" — check)
+    // Recorder mode: save decision based on extracted fields only
+    const save = await runSaveDetector({ extracted, tradingDate: DATE, tradingTimezone: TZ })
     console.log('[scenario1] save_trade:', save.save_trade, '| trade_data:', JSON.stringify(save.trade_data))
     expect(typeof save.save_trade).toBe('boolean')
   }, 30000)
 })
 
 // ─────────────────────────────────────────────────────────────
-// SCENARIO 2: Depressed trader, skips execution score
+// SCENARIO 2: Full trade with no execution score — should save
 // ─────────────────────────────────────────────────────────────
-describe('Scenario 2: Depressed trader skips execution score', () => {
-  it('saves trade without execution score when trader skips', async () => {
-    const convo: ChatMessage[] = [
-      { role: 'user', content: 'took ES long, lost 800 bucks, entered at 9:30' },
-      { role: 'assistant', content: 'That hurts. How were you feeling going in?' },
-      { role: 'user', content: 'frustrated honestly' },
-      { role: 'assistant', content: 'Got it. How would you rate your execution — or do you want to skip that?' },
-      { role: 'user', content: 'skip it, not in the mood' },
-    ]
-    const lastMsg = 'skip it, not in the mood'
-    const extracted = await runExtractor(lastMsg, TZ)
-    console.log('[scenario2] extracted declined:', extracted.declined)
+describe('Scenario 2: Trade saves without execution score', () => {
+  it('saves trade when execution_score is missing (optional field)', async () => {
+    // Recorder mode: extractor picks up fields from one utterance
+    const msg = 'took ES long, lost 800 bucks, entered at 9:30, frustrated honestly'
+    const extracted = await runExtractor(msg, TZ)
+    console.log('[scenario2] extracted:', JSON.stringify({ instrument: extracted.instrument, pnl: extracted.pnl, emotion: extracted.emotion }))
 
-    const save = await runSaveDetector({ messages: convo, extracted, tradingDate: DATE, tradingTimezone: TZ })
+    const save = await runSaveDetector({ extracted, tradingDate: DATE, tradingTimezone: TZ })
     console.log('[scenario2] save_trade:', save.save_trade, '| execution_score:', save.trade_data?.execution_score)
-    // Should save without execution_score (it's now optional)
+    // execution_score not mentioned → should still save (it's optional)
     expect(save.save_trade).toBe(true)
-    // save-detector strips null fields — execution_score absent means it was not provided
     expect(save.trade_data?.execution_score).toBeUndefined()
   }, 30000)
 })
 
 // ─────────────────────────────────────────────────────────────
-// SCENARIO 3: Two trades back to back — duplicate prevention
+// SCENARIO 3: Second trade utterance — extractor picks it up clean
 // ─────────────────────────────────────────────────────────────
-describe('Scenario 3: Two NQ trades same day same PnL', () => {
-  it('saves second trade despite matching instrument+pnl with first', async () => {
-    const convoWithFirstSaved: ChatMessage[] = [
-      { role: 'user', content: 'NQ long, made 300, entered 9:30am, calm, execution 8' },
-      { role: 'assistant', content: 'Solid. Did you follow your plan?' },
-      { role: 'user', content: 'yes' },
-      { role: 'user', content: '[SYSTEM: Trade already saved — NQ long $300 at 2026-03-24T09:30:00-04:00. Do not save this trade again under any circumstances.]' },
-      { role: 'assistant', content: 'Great discipline. Any more trades today?' },
-      { role: 'user', content: 'yeah took another NQ long at 11am, also made 300, felt confident this time' },
-    ]
-    const lastMsg = 'yeah took another NQ long at 11am, also made 300, felt confident this time'
-    const extracted = await runExtractor(lastMsg, TZ)
+describe('Scenario 3: Second trade in same session', () => {
+  it('extractor correctly parses second trade utterance', async () => {
+    // Recorder processes each utterance independently
+    const msg = 'yeah took another NQ long at 11am, also made 300, felt confident this time'
+    const extracted = await runExtractor(msg, TZ)
+    console.log('[scenario3] instrument:', extracted.instrument, '| direction:', extracted.direction, '| pnl:', extracted.pnl)
 
-    const save = await runSaveDetector({ messages: convoWithFirstSaved, extracted, tradingDate: DATE, tradingTimezone: TZ })
+    expect(extracted.instrument?.toUpperCase()).toBe('NQ')
+    expect(extracted.direction).toBe('long')
+    expect(extracted.pnl).toBe(300)
+    expect(extracted.emotion).toBe('confident')
+
+    const save = await runSaveDetector({ extracted, tradingDate: DATE, tradingTimezone: TZ })
     console.log('[scenario3] save_trade:', save.save_trade, '| opened_at:', save.trade_data?.opened_at)
-    // Different opened_at (11am vs 9:30am) — should NOT be blocked as duplicate
     expect(save.save_trade).toBe(true)
   }, 30000)
 })
@@ -164,32 +152,22 @@ describe('Scenario 6: Trade mention then off-topic', () => {
 })
 
 // ─────────────────────────────────────────────────────────────
-// SCENARIO 7: Fragmented multi-turn — fields arrive slowly
+// SCENARIO 7: Incomplete utterance vs complete utterance
 // ─────────────────────────────────────────────────────────────
-describe('Scenario 7: Fragmented field collection', () => {
-  it('saves only when all minimum fields are collected across turns', async () => {
-    // Turn 1: instrument only
-    const turn1 = await runExtractor('traded NQ today', TZ)
-    expect(turn1.has_trade).toBe(true)
-    expect(turn1.pnl).toBeNull()
+describe('Scenario 7: Incomplete vs complete recorder utterance', () => {
+  it('does not save partial utterance, saves complete utterance', async () => {
+    // Incomplete: no pnl, no time, no emotion
+    const partial = await runExtractor('traded NQ today', TZ)
+    expect(partial.has_trade).toBe(true)
+    expect(partial.pnl).toBeNull()
 
-    const convoPartial: ChatMessage[] = [
-      { role: 'user', content: 'traded NQ today' },
-      { role: 'assistant', content: 'How did it go — long or short, and what was the pnl?' },
-      { role: 'user', content: 'short, lost 350' },
-      { role: 'assistant', content: 'Got it. When did you get in?' },
-    ]
-    const save1 = await runSaveDetector({ messages: convoPartial, extracted: turn1, tradingDate: DATE, tradingTimezone: TZ })
-    expect(save1.save_trade).toBe(false) // Missing opened_at + emotion
+    const save1 = await runSaveDetector({ extracted: partial, tradingDate: DATE, tradingTimezone: TZ })
+    expect(save1.save_trade).toBe(false) // Missing minimum fields
 
-    // Now complete the conversation
-    const convoFull: ChatMessage[] = [
-      ...convoPartial,
-      { role: 'user', content: 'entered at 2pm, felt calm' },
-    ]
-    const turn2 = await runExtractor('entered at 2pm, felt calm', TZ)
-    const save2 = await runSaveDetector({ messages: convoFull, extracted: turn2, tradingDate: DATE, tradingTimezone: TZ })
-    console.log('[scenario7] full convo save_trade:', save2.save_trade)
+    // Complete: all minimum fields in one utterance
+    const complete = await runExtractor('NQ short, lost 350, entered at 2pm, felt calm', TZ)
+    const save2 = await runSaveDetector({ extracted: complete, tradingDate: DATE, tradingTimezone: TZ })
+    console.log('[scenario7] complete save_trade:', save2.save_trade)
     expect(save2.save_trade).toBe(true)
   }, 40000)
 })

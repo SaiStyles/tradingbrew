@@ -12,7 +12,6 @@ describe('Query Analyst — SQL generation', () => {
   it('generates valid SQL for win rate question', async () => {
     const result = await runQueryAnalyst({
       question: 'what is my overall win rate?',
-      querySubtype: 'data',
       tradingTimezone: TZ,
       currentDate: DATE,
     })
@@ -26,7 +25,6 @@ describe('Query Analyst — SQL generation', () => {
   it('generates valid SQL for day of week analysis', async () => {
     const result = await runQueryAnalyst({
       question: 'how do I trade on Mondays vs Fridays?',
-      querySubtype: 'data',
       tradingTimezone: TZ,
       currentDate: DATE,
     })
@@ -39,7 +37,6 @@ describe('Query Analyst — SQL generation', () => {
   it('generates valid SQL for instrument analysis', async () => {
     const result = await runQueryAnalyst({
       question: 'what is my win rate on NQ vs ES?',
-      querySubtype: 'data',
       tradingTimezone: TZ,
       currentDate: DATE,
     })
@@ -52,7 +49,6 @@ describe('Query Analyst — SQL generation', () => {
   it('generates SQL for emotion vs PnL analysis', async () => {
     const result = await runQueryAnalyst({
       question: 'how do I perform when I trade with FOMO vs when I am calm?',
-      querySubtype: 'data',
       tradingTimezone: TZ,
       currentDate: DATE,
     })
@@ -65,7 +61,6 @@ describe('Query Analyst — SQL generation', () => {
   it('skips SQL for pure psychology question', async () => {
     const result = await runQueryAnalyst({
       question: 'what is my biggest psychological weakness?',
-      querySubtype: 'psychology',
       tradingTimezone: TZ,
       currentDate: DATE,
     })
@@ -77,7 +72,6 @@ describe('Query Analyst — SQL generation', () => {
   it('generates SQL without trailing semicolon', async () => {
     const result = await runQueryAnalyst({
       question: 'show me my last 10 trades',
-      querySubtype: 'data',
       tradingTimezone: TZ,
       currentDate: DATE,
     })
@@ -145,7 +139,6 @@ describe('Query Analyst — pipeline simulation', () => {
   it('handles loss streak question end to end', async () => {
     const result = await runQueryAnalyst({
       question: 'how many times have I had 3 losses in a row?',
-      querySubtype: 'data',
       tradingTimezone: TZ,
       currentDate: DATE,
     })
@@ -158,7 +151,6 @@ describe('Query Analyst — pipeline simulation', () => {
   it('handles date-specific question', async () => {
     const result = await runQueryAnalyst({
       question: 'how did I do last Monday?',
-      querySubtype: 'data',
       tradingTimezone: TZ,
       currentDate: DATE,
     })
@@ -170,7 +162,6 @@ describe('Query Analyst — pipeline simulation', () => {
   it('generates aggregate for P&L summary', async () => {
     const result = await runQueryAnalyst({
       question: 'what is my total P&L this month?',
-      querySubtype: 'data',
       tradingTimezone: TZ,
       currentDate: DATE,
     })
@@ -182,7 +173,6 @@ describe('Query Analyst — pipeline simulation', () => {
   it('handles combined data + psychology question', async () => {
     const result = await runQueryAnalyst({
       question: 'on my worst trading days, what was my emotional state?',
-      querySubtype: 'both',
       tradingTimezone: TZ,
       currentDate: DATE,
     })
