@@ -212,7 +212,7 @@ export async function runBuddy(params: BuddyParams): Promise<string> {
 
 // ── Streaming: used by route.ts for real-time token delivery ─────────────
 // Returns the Anthropic MessageStream, or null if no API key
-export function createBuddyStream(params: BuddyParams) {
+export function createBuddyStream(params: BuddyParams): AsyncIterable<Anthropic.MessageStreamEvent> | null {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) return null
 
