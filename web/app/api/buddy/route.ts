@@ -187,10 +187,11 @@ export async function POST(request: NextRequest) {
 
     console.log('[agents] extractor + context + portrait:', Date.now() - t0, 'ms', traderPortrait ? '(portrait ready)' : '(no portrait yet)')
 
-    // Step 2.5: Query Agent — explorer only, runs only for historical analysis questions
-    // QueryAnalyst owns all routing decisions: what SQL to generate, whether to fetch psychology_log, needs_sql flag.
+    // Step 2.5: Query Agent — explorer only, always runs.
+    // QueryAnalyst owns all routing decisions via needs_sql flag — no upstream gate needed.
+    // needs_sql:false for casual chat (cheap), needs_sql:true fires SQL execution.
     let enrichedContext = context
-    if (isExplorer && extracted.query_type === 'historical_analysis') {
+    if (isExplorer) {
       try {
         const queryResult = await runQueryAnalyst({
           question: message,

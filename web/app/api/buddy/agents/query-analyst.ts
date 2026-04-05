@@ -56,6 +56,20 @@ news_events (economic calendar — may be empty for past events):
 - impact: 'high', 'medium', 'low'
 - currency: affected currency
 
+goals (trader's weekly goals — grouped by week_start):
+- id: UUID
+- user_id: UUID — filter by user (injected automatically)
+- week_start: DATE — Monday of the goal's week (e.g. '2026-04-07')
+- goal_text: plain text description of the goal, may be null
+- goal_type: category — values: 'Performance', 'Psychology', 'Process', 'Risk' — may be null
+- is_completed: boolean — true if trader marked it done
+- created_at: timestamptz
+
+JOINS for goal analytics:
+- Goals are per-week: filter by week_start to get current or past week goals
+- Current week: WHERE week_start = DATE_TRUNC('week', CURRENT_DATE)
+- Completion rate: COUNT(*) FILTER (WHERE is_completed) * 100.0 / NULLIF(COUNT(*), 0)
+
 RULES FOR SQL GENERATION:
 - Trader slang: "bad trade" / "ass trade" / "terrible trade" / "disaster" / "worst" / "blowup" = pnl < 0 (losing trade). "big win" / "best trade" / "crusher" = pnl > 0 ORDER BY pnl DESC. "last [X] trade" = ORDER BY opened_at DESC LIMIT 1.
 - Session slang: "London session" / "London open" = session = 'london'. "NY" / "New York" / "US session" / "morning session" (ET) = session = 'new_york'. "Asia" / "overnight" = session = 'asia'. "overlap" = session = 'overlap'.

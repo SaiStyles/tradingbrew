@@ -53,6 +53,50 @@ Middleware is standard Supabase SSR pattern — should not crash if env vars are
 
 ---
 
+## [2026-04-05] Analyst: weekly/DOW pattern queries — Buddy deflects instead of leading with data
+
+**Observed:**
+- "I feel worse on Mondays" → Buddy asks "What happens on Mondays specifically?" instead of showing Monday trade stats
+- "I've been struggling this week" → Buddy responds with context numbers but doesn't break down the weekly pattern with SQL data
+
+**Expected:** QueryAnalyst fires, SQL runs (DOW filter or date range), Buddy leads with actual data then follows up conversationally.
+
+**Likely cause:** QueryAnalyst fires and returns results, but Buddy treats the implicit observation as a conversation opener and asks a clarifying question before answering. Buddy prompt needs a hard rule: "If historicalQuery has results, lead with the data — don't ask for clarification first."
+
+**Priority:** Medium. Data is there, Buddy just doesn't use it confidently.
+
+---
+
 ## [2026-04-01] Test suite requires --no-file-parallelism
 
 Running `npx vitest run` without the flag causes concurrent API calls to hit the 50 RPM Haiku rate limit, causing random test failures. Always run: `npx vitest run --no-file-parallelism`. This is already set in vitest.config.ts via `fileParallelism: false` so it should apply automatically.
+
+---
+
+## [2026-04-05] NewsEvent type uses `event_name` but DB column is `title`
+
+**Location:** `web/types/trade.ts` — `NewsEvent` interface has `event_name` field.
+DB column is `title` (confirmed in project_db_schema.md). `query-analyst.ts` already uses `title` correctly.
+
+**Impact:** `context.ts` selects `*` from `news_events` — raw data comes back with `title`. When `buddy.ts` renders upcoming news using `n.event_name` it gets `undefined`. Buddy still knows "high impact USD event in 30 minutes" but not its name. "FOMC Rate Decision in 30 minutes" is significantly more useful.
+
+**Fix needed (two lines):**
+1. `web/types/trade.ts` — rename `event_name: string` → `title: string` in `NewsEvent` interface
+2. `web/app/api/buddy/agents/buddy.ts` — replace `n.event_name` (or `event.event_name`) → `n.title`
+
+**Priority:** Low — event timing + impact still surfaces. Name is bonus context.
+
+---
+
+## [2026-04-05] QueryAnalyst latency — ~8.5s total for historical queries
+
+Explorer pipeline now runs QueryAnalyst on every message (gate removed). For casual chat, QueryAnalyst returns `needs_sql:false` cheaply (~50 tokens). For historical queries, full SQL generation adds ~1-2s on top of normal Buddy latency.
+
+**Observed:** `[agents] total: 8497ms` for a combined trade SQL + psychology_sql query.
+
+**Not a bug per se** — correctness tradeoff for reliability. Gate removal fixed the `win rate on NQ` miss.
+Acceptable at current user scale. If latency becomes user-facing issue, solutions:
+1. Stream Buddy while QueryAnalyst runs in parallel (requires restructure)
+2. Re-introduce a lighter gate (Extractor query_type, but fix the prompt so it's reliable)
+
+**Priority:** Low — correctness matters more than latency for now.
