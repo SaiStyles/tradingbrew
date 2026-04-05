@@ -112,6 +112,8 @@ export default function BuddyChat({ buddyName }: { buddyName: string }) {
   // ── Recorder state ─────────────────────────────────────
   const [recorderEntries, setRecorderEntries] = useState<RecorderEntry[]>([])
   const [recorderStatus, setRecorderStatus] = useState<RecorderStatus>('idle')
+  // CHAT-FALLBACK: text input for when voice isn't available — delete this line + the JSX block below to remove cleanly
+  const [recorderChatInput, setRecorderChatInput] = useState('')
   const [activeTab, setActiveTab] = useState<'recorder' | 'explorer'>('recorder')
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -324,6 +326,36 @@ export default function BuddyChat({ buddyName }: { buddyName: string }) {
             </p>
             <p className="text-xs text-zinc-600">Speak your trades naturally. Everything is handled silently.</p>
           </div>
+
+          {/* CHAT-FALLBACK: delete this block to remove text input — no other code depends on it */}
+          <div className="w-full flex gap-2 mt-1">
+            <input
+              type="text"
+              value={recorderChatInput}
+              onChange={e => setRecorderChatInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && recorderChatInput.trim() && !isRecorderProcessingRef.current) {
+                  void handleRecorderTranscript(recorderChatInput.trim())
+                  setRecorderChatInput('')
+                }
+              }}
+              placeholder="Type a trade (voice fallback)…"
+              disabled={recorderStatus === 'processing'}
+              className="flex-1 bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-zinc-500 transition placeholder:text-zinc-600 disabled:opacity-40"
+            />
+            <button
+              onClick={() => {
+                if (!recorderChatInput.trim() || isRecorderProcessingRef.current) return
+                void handleRecorderTranscript(recorderChatInput.trim())
+                setRecorderChatInput('')
+              }}
+              disabled={recorderStatus === 'processing' || !recorderChatInput.trim()}
+              className="bg-zinc-700 hover:bg-zinc-600 disabled:opacity-40 text-white rounded-lg px-3 py-2 text-sm transition"
+            >
+              Send
+            </button>
+          </div>
+          {/* END CHAT-FALLBACK */}
         </div>
 
         {/* Recent captures */}

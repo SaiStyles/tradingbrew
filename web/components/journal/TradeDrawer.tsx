@@ -177,6 +177,7 @@ export default function TradeDrawer({ isOpen, onClose, onSave, trade }: TradeDra
   const validate = (): boolean => {
     const newErrors: Partial<Record<keyof FormState, string>> = {}
     if (!form.instrument.trim()) newErrors.instrument = 'Instrument is required'
+    if (!form.direction) newErrors.direction = 'Direction is required'
     if (!form.pnl && form.pnl !== '0') newErrors.pnl = 'P&L is required'
     if (!form.opened_at) newErrors.opened_at = 'Entry time is required'
     setErrors(newErrors)
@@ -278,8 +279,8 @@ export default function TradeDrawer({ isOpen, onClose, onSave, trade }: TradeDra
 
           {/* Direction */}
           <div>
-            <label className="block text-xs font-medium text-zinc-400 mb-1.5">Direction</label>
-            <div className="flex gap-2">
+            <label className="block text-xs font-medium text-zinc-400 mb-1.5">Direction <span className="text-red-400">*</span></label>
+            <div className={`flex gap-2 rounded-lg ${errors.direction ? 'ring-1 ring-red-500' : ''}`}>
               {(['long', 'short'] as TradeDirection[]).map(d => (
                 <button key={d} type="button" onClick={() => setField('direction', form.direction === d ? '' : d)}
                   className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-all ${
@@ -292,6 +293,7 @@ export default function TradeDrawer({ isOpen, onClose, onSave, trade }: TradeDra
                 </button>
               ))}
             </div>
+            {errors.direction && <p className="text-red-400 text-xs mt-1">{errors.direction}</p>}
           </div>
 
           {/* Price inputs */}

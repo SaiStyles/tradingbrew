@@ -23,7 +23,7 @@ export default async function JournalPage() {
         .select('*', { count: 'exact' })
         .eq('user_id', user.id)
         .is('deleted_at', null)
-        .order('opened_at', { ascending: false, nullsFirst: false })
+        .order('opened_at', { ascending: false, nullsFirst: true })
         .range(0, 49),
       supabase
         .from('users')

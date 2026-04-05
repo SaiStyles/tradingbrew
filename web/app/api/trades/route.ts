@@ -4,12 +4,7 @@ import type { TradeRecord } from '@/types/trade'
 
 // Fields that determine the incomplete flag
 function calcIncomplete(data: Partial<TradeRecord>): boolean {
-  return (
-    !data.opened_at ||
-    !data.direction ||
-    !data.entry_price ||
-    !data.exit_price
-  )
+  return !data.opened_at || !data.direction
 }
 
 // ------------------------------------------------------------------
@@ -106,7 +101,7 @@ export async function GET(request: NextRequest) {
       .select('*', { count: 'exact' })
       .eq('user_id', user.id)
       .is('deleted_at', null)
-      .order('opened_at', { ascending: false, nullsFirst: false })
+      .order('opened_at', { ascending: false, nullsFirst: true })
       .range(offset, offset + limit - 1)
 
     if (instrument) {

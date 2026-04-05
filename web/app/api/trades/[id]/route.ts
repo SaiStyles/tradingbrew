@@ -4,12 +4,7 @@ import type { TradeRecord } from '@/types/trade'
 
 // Fields that determine the incomplete flag
 function calcIncomplete(data: Partial<TradeRecord>): boolean {
-  return (
-    !data.opened_at ||
-    !data.direction ||
-    !data.entry_price ||
-    !data.exit_price
-  )
+  return !data.opened_at || !data.direction
 }
 
 // ------------------------------------------------------------------
