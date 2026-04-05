@@ -187,15 +187,6 @@ export async function POST(request: NextRequest) {
 
     console.log('[agents] extractor + context + portrait:', Date.now() - t0, 'ms', traderPortrait ? '(portrait ready)' : '(no portrait yet)')
 
-    // Fallback: Haiku misses rules/violations questions — classify them here if extractor returned null
-    if (isExplorer && extracted.query_type === null) {
-      const lower = message.toLowerCase()
-      const isRulesQuery = /\b(rule|rules|violation|violations|break|broke|breaking|broken|violat|follow.*rule|rule.*follow|comply|compliance)\b/.test(lower)
-      if (isRulesQuery) {
-        extracted.query_type = 'historical_analysis'
-      }
-    }
-
     // Step 2.5: Query Agent — explorer only, runs only for historical analysis questions
     // QueryAnalyst owns all routing decisions: what SQL to generate, whether to fetch psychology_log, needs_sql flag.
     let enrichedContext = context
@@ -458,19 +449,48 @@ export async function POST(request: NextRequest) {
             ...(systemMarker ? [systemMarker] : []),
           ].slice(-20)
 
-          // Patch late execution_score onto last saved trade
-          if (!saveResult.save_trade && session.last_trade_id && extracted.execution_score != null) {
-            const clamped = Math.min(10, Math.max(1, Math.round(extracted.execution_score)))
-            supabase
-              .from('trades')
-              .update({ execution_score: clamped })
-              .eq('id', session.last_trade_id)
-              .eq('user_id', user.id)
-              .is('execution_score', null)
-              .then(({ error }) => {
-                if (error) console.error('[buddy] execution_score patch failed:', error)
-                else console.log('[buddy] execution_score patched on trade:', session.last_trade_id)
-              })
+          // Patch late enrichment fields onto last saved trade (fire-and-forget)
+          // Fires when no new trade was saved but extracted fields arrived (e.g. "felt frustrated", "9 on execution")
+          if (!saveResult.save_trade && session.last_trade_id) {
+            const lateEmotion = normalizeEmotion(extracted.emotion ?? null)
+            const lateExecution = extracted.execution_score != null
+              ? Math.min(10, Math.max(1, Math.round(extracted.execution_score)))
+              : null
+            const lateSession = extracted.session ?? null
+            const lateFollowedPlan = extracted.followed_plan ?? null
+            const lateExitReason = extracted.exit_reason ?? null
+
+            const hasAnyLate = lateEmotion !== null || lateExecution !== null ||
+              lateSession !== null || lateFollowedPlan !== null || lateExitReason !== null
+
+            if (hasAnyLate) {
+              // Fetch existing row to avoid overwriting already-set fields
+              supabase
+                .from('trades')
+                .select('emotion_tag, execution_score, session, followed_plan, exit_reason')
+                .eq('id', session.last_trade_id)
+                .eq('user_id', user.id)
+                .single()
+                .then(({ data: existing, error: fetchErr }) => {
+                  if (fetchErr || !existing) return
+                  const patch: Record<string, unknown> = {}
+                  if (lateEmotion !== null && existing.emotion_tag == null) patch.emotion_tag = lateEmotion
+                  if (lateExecution !== null && existing.execution_score == null) patch.execution_score = lateExecution
+                  if (lateSession !== null && existing.session == null) patch.session = lateSession
+                  if (lateFollowedPlan !== null && existing.followed_plan == null) patch.followed_plan = lateFollowedPlan
+                  if (lateExitReason !== null && existing.exit_reason == null) patch.exit_reason = lateExitReason
+                  if (Object.keys(patch).length === 0) return
+                  supabase
+                    .from('trades')
+                    .update(patch)
+                    .eq('id', session.last_trade_id!)
+                    .eq('user_id', user.id)
+                    .then(({ error }) => {
+                      if (error) console.error('[buddy] late patch failed:', error)
+                      else console.log('[buddy] late patch applied:', Object.keys(patch), 'on trade:', session.last_trade_id)
+                    })
+                })
+            }
           }
 
           // Populate scribe payload for the after() handler
