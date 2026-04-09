@@ -123,14 +123,19 @@ cp .env.example .env.local
 
 ### Database
 
-Run these in your Supabase SQL editor:
+Run these in your Supabase SQL editor **in order**:
 
 ```
-docs/setup-db-functions.sql     # required — analytics RPC function
+docs/schema.sql                 # required — all core tables + RLS policies
+docs/setup-db-functions.sql     # required — analytics RPC function (Analyst tab)
 docs/add-telegram.sql           # optional — Telegram integration
 docs/add-screenshots.sql        # optional — screenshot storage
 docs/add-daily-portraits.sql    # optional — portrait cache
 ```
+
+Then create two storage buckets in Supabase Dashboard → Storage:
+- `trade-screenshots` (public)
+- `trade-voice-notes` (public)
 
 ### Run
 
