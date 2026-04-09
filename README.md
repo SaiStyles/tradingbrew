@@ -85,7 +85,6 @@ This is where someone could take it from working prototype to real product. List
 - [ ] **Voice latency** — currently ~2.5s floor (Whisper + context fetch + first token). Can be reduced by pre-fetching DB context on speech start before Whisper finishes. Details in `BUGS.md`.
 
 **Known rough edges:**
-- Hindsight semantic memory (vectorize.io) credits 402 silently — Buddy just runs without memories. No user-facing error.
 - 1 flaky test in the suite (QueryAnalyst DOW SQL — Haiku non-determinism, not a code bug)
 - Voice recorder does not work on mobile (intentional for now)
 
