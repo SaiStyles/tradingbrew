@@ -16,7 +16,7 @@ You mumble your trades while watching charts. TradingBrew listens, extracts stru
 
 The Analyst tab is for exploration — ask anything about your trading history in plain English and get real answers backed by your actual data.
 
-This project was built by one person. It works. But it's not finished, and the original author isn't actively developing it anymore. If the idea resonates with you, pick it up.
+I built this alone. It works. But I'm stepping away and won't be actively developing it anymore. If the idea resonates with you, pick it up.
 
 ---
 
