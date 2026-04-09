@@ -99,7 +99,7 @@ This is where someone could take it from working prototype to real product. List
 - **Voice**: Silero VAD WASM (`@ricky0123/vad-web`) + OpenAI Whisper
 - **Memory**: Hindsight gen2 (vectorize.io) — optional, app works without it
 - **Messaging**: Telegram Bot API
-- **Deployment**: Vercel
+- **Deployment**: Vercel (or any Node.js host)
 
 ---
 
@@ -141,7 +141,7 @@ npm run dev
 
 ### Notes
 
-- COOP/COEP headers are required for Silero VAD (SharedArrayBuffer). They're set in `next.config.ts` — no extra config needed on Vercel.
+- COOP/COEP headers are required for Silero VAD (SharedArrayBuffer). They're already set in `next.config.ts`.
 - Run tests with `npx vitest run --no-file-parallelism` (sequential to stay under Anthropic 50 RPM rate limit).
 
 ---
