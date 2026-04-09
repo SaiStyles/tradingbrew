@@ -1,55 +1,68 @@
 import { describe, it, expect } from 'vitest'
-import { parseJSON, parseAnalystOutput } from '@/lib/claude/parser'
+import { parseWithSchema } from '@/lib/claude/parser'
+import { z } from 'zod'
+import { AnalystReportSchema, ExtractedDataSchema } from '@/types/trade'
 
 // ─────────────────────────────────────────
-// parseJSON
+// parseWithSchema
 // ─────────────────────────────────────────
 
-describe('parseJSON', () => {
+const SimpleSchema = z.object({
+  foo: z.string(),
+})
+
+const TradeSchema = z.object({
+  save_trade: z.boolean(),
+  trade_data: z.object({ instrument: z.string() }).nullable(),
+  reply: z.string().default(''),
+})
+
+describe('parseWithSchema', () => {
   it('parses valid JSON', () => {
-    const result = parseJSON<{ foo: string }>('{"foo":"bar"}')
+    const result = parseWithSchema('{"foo":"bar"}', SimpleSchema)
     expect(result).toEqual({ foo: 'bar' })
   })
 
   it('handles prefilled assistant turn (starts mid-JSON)', () => {
-    // Claude prefill: we send '{', Claude returns rest
-    const result = parseJSON<{ save_trade: boolean }>(
-      '{"save_trade":true,"trade_data":null,"reply":""}'
+    const result = parseWithSchema(
+      '{"save_trade":true,"trade_data":null,"reply":""}',
+      TradeSchema
     )
     expect(result?.save_trade).toBe(true)
   })
 
   it('returns null on invalid JSON', () => {
-    expect(parseJSON('{broken json')).toBeNull()
+    expect(parseWithSchema('{broken json', SimpleSchema)).toBeNull()
   })
 
   it('returns null on empty string', () => {
-    expect(parseJSON('')).toBeNull()
+    expect(parseWithSchema('', SimpleSchema)).toBeNull()
   })
 
   it('handles JSON with trailing content after closing brace', () => {
-    const result = parseJSON<{ x: number }>('{"x":1} some extra text')
-    expect(result?.x).toBe(1)
+    const result = parseWithSchema('{"foo":"test"} some extra text', SimpleSchema)
+    expect(result?.foo).toBe('test')
   })
 
   it('parses nested objects', () => {
-    const result = parseJSON<{ trade_data: { instrument: string } }>(
-      '{"save_trade":true,"trade_data":{"instrument":"NQ"},"reply":""}'
+    const result = parseWithSchema(
+      '{"save_trade":true,"trade_data":{"instrument":"NQ"},"reply":""}',
+      TradeSchema
     )
     expect(result?.trade_data?.instrument).toBe('NQ')
   })
 
-  it('handles null values correctly', () => {
-    const result = parseJSON<{ pnl: null }>('{"pnl":null}')
-    expect(result?.pnl).toBeNull()
+  it('returns null when schema validation fails', () => {
+    const result = parseWithSchema('{"foo":123}', SimpleSchema) // foo should be string
+    expect(result).toBeNull()
   })
 })
 
 // ─────────────────────────────────────────
-// parseAnalystOutput
+// AnalystReportSchema via parseWithSchema
 // ─────────────────────────────────────────
 
-describe('parseAnalystOutput', () => {
+describe('AnalystReport parsing', () => {
   it('parses valid analyst output', () => {
     const raw = JSON.stringify({
       violations: [{ rule_id: 'rule-1', severity: 'violation', reasoning: 'Test' }],
@@ -59,18 +72,18 @@ describe('parseAnalystOutput', () => {
       intervention_needed: false,
       intervention_type: null,
     })
-    const result = parseAnalystOutput(raw)
-    expect(result.violations).toHaveLength(1)
-    expect(result.warnings[0]).toBe('Watch position size')
+    const result = parseWithSchema(raw, AnalystReportSchema)
+    expect(result).not.toBeNull()
+    expect(result!.violations).toHaveLength(1)
+    expect(result!.warnings[0]).toBe('Watch position size')
   })
 
-  it('returns EMPTY on bad JSON', () => {
-    const result = parseAnalystOutput('{bad}')
-    expect(result.violations).toEqual([])
-    expect(result.intervention_needed).toBe(false)
+  it('returns null on bad JSON', () => {
+    const result = parseWithSchema('{bad}', AnalystReportSchema)
+    expect(result).toBeNull()
   })
 
-  it('handles empty arrays', () => {
+  it('handles empty arrays with defaults', () => {
     const raw = JSON.stringify({
       violations: [],
       warnings: [],
@@ -79,12 +92,13 @@ describe('parseAnalystOutput', () => {
       intervention_needed: false,
       intervention_type: null,
     })
-    const result = parseAnalystOutput(raw)
-    expect(result.violations).toEqual([])
-    expect(result.positives).toEqual([])
+    const result = parseWithSchema(raw, AnalystReportSchema)
+    expect(result).not.toBeNull()
+    expect(result!.violations).toEqual([])
+    expect(result!.positives).toEqual([])
   })
 
-  it('handles warnings as plain strings not objects', () => {
+  it('handles warnings as plain strings', () => {
     const raw = JSON.stringify({
       violations: [],
       warnings: ['plain string warning'],
@@ -93,17 +107,9 @@ describe('parseAnalystOutput', () => {
       intervention_needed: false,
       intervention_type: null,
     })
-    const result = parseAnalystOutput(raw)
-    expect(typeof result.warnings[0]).toBe('string')
-    expect(typeof result.patterns[0]).toBe('string')
-  })
-
-  it('handles truncated JSON with bracket matching', () => {
-    // Simulate max_tokens cutoff mid-string
-    const truncated = '{"violations":[],"warnings":["Watch this"],"patterns":[],"positives":[],"intervention_needed":false'
-    const result = parseAnalystOutput(truncated)
-    // Should not crash — returns either partial parse or EMPTY
-    expect(result).toBeDefined()
-    expect(result.violations).toBeDefined()
+    const result = parseWithSchema(raw, AnalystReportSchema)
+    expect(result).not.toBeNull()
+    expect(typeof result!.warnings[0]).toBe('string')
+    expect(typeof result!.patterns[0]).toBe('string')
   })
 })

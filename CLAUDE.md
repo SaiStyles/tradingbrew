@@ -32,16 +32,17 @@ Nobody wants to talk to AI. They want to talk to limbo — and have limbo quietl
 - Database: Supabase (PostgreSQL)
 - Auth: Supabase Auth
 - Storage: Supabase Storage
-- AI Agents: 7-agent pipeline
-  → Extractor (Haiku) — field extraction + query_type detection
+- AI Agents: 7-agent pipeline (5 Haiku + 2 pure TS)
+  → Extractor (Haiku) — field extraction + query_type detection + multi-message context
   → Context (Pure TS, no AI) — data fetching from Supabase + Hindsight recall
   → QueryAnalyst (Haiku) — text-to-SQL for historical questions, gated on query_type
   → Analyst (Haiku) — pattern detection, background
   → Buddy (Haiku always) — natural conversation, plain text
-  → SaveDetector (Haiku) — save decision
+  → SaveDetector (Pure TS, no AI) — save decision via null check (was Haiku, replaced 2026-04-08)
   → Scribe (Haiku) — psychological memory builder, fires post-response via after()
   NOTE: ProactiveGate + ProactiveBuddy DELETED (2026-04-04). Recorder handles session flow. BuddyChat uses static greeting.
 - Agent Parser: shared lib/claude/parser.ts
+- Anthropic Client: shared singleton via lib/claude/client.ts — getAnthropicClient()
 - Memory: Hindsight (gen2 agentic memory) — semantic recall, Mental Models, reflect()
 - Database Facts: Supabase PostgreSQL (trades, rules, accounts)
 - Voice: OpenAI Whisper STT (Recorder input only) — LIVE. TTS removed from Chat path (cost + complexity, not worth it).
@@ -136,14 +137,16 @@ tradingbrew/
   → Empty for new users, activates as Scribe builds observations
 - Supabase memories table still exists in schema but is no longer written to
 
-## Agent Architecture — 9 Agent Pipeline
+## Agent Architecture — 7 Agent Pipeline
 
 **Two distinct pipelines — enforced in route.ts via mode: 'recorder' | 'explorer':**
 
 **Recorder pipeline** (voice input, silent operation):
-- Extractor (lean prompt) → Context → Analyst(bg) + SaveDetector (parallel) → Scribe (after())
+- Extractor (lean prompt + context window) → Context → Analyst(bg) + SaveDetector (parallel) → Scribe (after())
+- Multi-message accumulation: pending_trade in session state merges fields across voice segments
+- Multi-trade drain loop: if more_trades=true, re-runs Extractor with ALREADY_EXTRACTED hint (max 3 trades/message)
 - No Buddy. No portrait fetch. No QueryAnalyst. Trade saves silently.
-- SaveDetector: single-pass, decides on extracted fields alone — no conversation loop.
+- SaveDetector: pure TS null check (instrument + pnl present → save). Zero API calls.
 - Returns SSE with done event only (no token stream).
 
 **Analyst pipeline** (text input, exploration only):
@@ -157,13 +160,17 @@ tradingbrew/
 Every buddy message runs through this pipeline:
 
 EXTRACTOR (Haiku)
-- Input: raw user message + trading timezone
+- Input: raw user message + trading timezone + recentContext (last 4 user messages, recorder only)
 - Output: structured JSON fields only
 - Also detects: query_type ("historical_analysis" | null)
   and query_subtype ("data" | "psychology" | "both" | null)
+- more_trades: true when message describes multiple trades — triggers drain loop
+- ALREADY_EXTRACTED hint: when re-run in drain loop, skips previously extracted trades
+- FRAGMENTS rule: context-aware — "1641" after "I lost on NQ" → pnl: -1641
 - query_type fires on BOTH explicit questions ("how do I do on Mondays?") AND
   implicit pattern observations ("I feel worse on Mondays", "NQ always kills me",
-  "been struggling this week") — expanded this session
+  "been struggling this week")
+- Prompt caching enabled (cache_control: ephemeral)
 - No history, no personality, pure extraction
 - Runs on every message
 
@@ -171,7 +178,7 @@ CONTEXT (Pure TypeScript — no AI call)
 - Input: user_id + trading timezone + current message
 - Output: context packet containing:
   → Relevant memories via Hindsight recall() (semantic, query = current message)
-  → Today's trades summary + P&L
+  → Today's trades summary + P&L (select specific columns only, not SELECT *)
   → Active rules
   → Account info
   → Upcoming economic events (next 2 hours) — NOTE: news tab is standalone TradingView embed, not connected to Buddy. This context data comes from news_events table only.
@@ -215,17 +222,15 @@ Agent principle:
 - Our code owns all data operations
 - Never hardcode trading behavior logic
 
-SAVE DETECTOR (Haiku)
-- Input: full conversation history + buddy reply
+SAVE DETECTOR (Pure TypeScript — no AI call, replaced Haiku 2026-04-08)
+- Input: extracted fields from Extractor
 - Output: save_trade boolean + trade_data
-- One job: detect if minimum fields exist
-- Minimum fields: instrument, direction, pnl,
-  opened_at, emotion_tag
-- execution_score: optional (asked last, never blocks save)
-- Never judges data quality
-- Never detects patterns
-- Duplicate prevention via [SYSTEM: Trade already saved]
-  messages in conversation history
+- Pure null check: instrument AND pnl present → save_trade: true
+- Minimum fields: instrument + pnl (was instrument + direction + pnl + opened_at + emotion_tag with Haiku)
+- All other fields optional: direction, opened_at, closed_at, position_size, emotion_tag,
+  execution_score, rr, exit_reason, session, followed_plan
+- Zero API calls — instant, deterministic
+- Duplicate prevention via [SYSTEM: Trade already saved] messages in conversation history
 
 SCRIBE (Haiku)
 - Runs after every Buddy response — fire-and-forget, never blocks
@@ -289,7 +294,7 @@ SCRIBE (Haiku)
 - ✅ Agent fixes (retry logic, parser fix,
      Analyst injection, trade collision handling,
      max_tokens, emotion_tag consistency)
-- ✅ Test suite: 113/113 passing — run with `npx vitest run --no-file-parallelism`
+- ✅ Test suite: 114/115 passing — run with `npx vitest run --no-file-parallelism`
      (fileParallelism:false in config; sequential required to stay under 50 RPM rate limit)
 - ✅ Conversational Analytics — Query Agent, text-to-SQL, self-correction loop,
      Buddy storytelling, Supabase RPC executor (requires setup-analytics-function.sql)
@@ -326,9 +331,8 @@ SCRIBE (Haiku)
      Supabase CHECK constraint violations
 - ✅ _debug_trade_error in /api/buddy response — surfaces Supabase insert errors to
      DevTools Network tab for debugging. Remove once trade saving is confirmed working.
-- ✅ Test suite: 113/113 passing (added 11 proactive agent tests, improved prompt
-     robustness for save-detector + query-analyst + analyst; sequential file execution
-     required via fileParallelism:false to stay under 50 RPM rate limit)
+- ✅ Test suite: 114/115 passing (save-detector tests pure TS now, deterministic;
+     sequential file execution required via fileParallelism:false to stay under 50 RPM rate limit)
 - ✅ Trade saving to Supabase — CONFIRMED WORKING.
 - ✅ Trades table schema expansion — migration run 2026-04-04. Added: setup_type (text),
      exit_reason (text), mistakes (text[] DEFAULT '{}'), market_condition (text).
@@ -353,25 +357,24 @@ SCRIBE (Haiku)
      Never blocks SSE response. Buddy uses previous turn's analysis (one turn behind by design).
 - ✅ ensureBank once per session — session flag `ensureBank_called` prevents duplicate Hindsight
      bank-creation calls. Reduced from 2 calls/message to 1 call/session lifetime.
-- ✅ max_tokens reduced — Extractor: 220, Analyst: 300, SaveDetector: 260, Scribe: 300, QueryAnalyst: 400.
+- ✅ max_tokens tuned — Extractor: 250, Analyst: 300, Scribe: 300, QueryAnalyst: 400.
      Buddy unchanged (300 regular / 500 with historicalQuery).
-     (Extractor/SaveDetector bumped to fit new fields: exit_reason, rr, session)
+     SaveDetector: N/A (pure TS, no API call).
 - ✅ Recorder + Analyst UI — BuddyChat split into two tabs. Recorder tab: vintage tape reel SVG,
      voice input, silent pipeline, recent captures log. Analyst tab: text-only chat, SSE streaming.
      Toggle at top of card. Defaults to Recorder.
 - ✅ TTS fully removed from Analyst/chat path — text only, no voice output, no AudioContext.
      All speak/playBuffer/playStreamingSentences/fetchTTSBuffer code deleted from BuddyChat.
 - ✅ Pipeline split by mode — route.ts gates agents by mode: 'recorder' | 'explorer' (internal name).
-     Recorder: Extractor + Context + Analyst(bg) + SaveDetector + Scribe. No Buddy, no portrait.
-     Analyst tab: Context + QueryAnalyst + Buddy stream + Scribe. No Extractor, no SaveDetector.
+     Recorder: Extractor + Context + Analyst(bg) + SaveDetector(pure TS) + Scribe. No Buddy, no portrait.
+     Analyst tab: Extractor + Context + QueryAnalyst + Buddy stream + Scribe. No SaveDetector.
 - ✅ Portrait fetch gated to Analyst tab only — Recorder skips reflect() entirely. Saves 500ms-2s
      on first recorder message of the day.
 - ✅ Extractor mode-aware prompt — Recorder gets lean prompt (~40% fewer tokens, no query_type logic).
      Explorer/Analyst gets full prompt unchanged.
-- ✅ SaveDetector mode-aware prompt — Recorder gets single-pass prompt (extracted fields only,
-     decisive save). Analyst tab: SaveDetector never runs. Explorer never saves trades.
+- ✅ SaveDetector mode-aware — Recorder only. Pure TS null check (instrument + pnl present → save).
+     Analyst tab: SaveDetector never runs. Explorer never saves trades.
 - ✅ Test suite updated for SSE — route-integration tests now parse SSE stream via parseSSE() helper.
-     122/123 passing (1 pre-existing flaky personality test, unrelated to changes).
 - ✅ Analyst full DB access — QueryAnalyst now generates optional psychology_sql alongside
      trade SQL for date-specific queries. Route runs both, merges results. Buddy receives
      trade data + Scribe observations for the period. "How did I trade on April 1st?" returns
@@ -431,6 +434,30 @@ SCRIBE (Haiku)
 - ✅ Buddy field-collection removed (2026-04-04) — Explorer tab is pure analysis. Hard rule added:
      never ask for trade fields. Recorder owns all trade logging.
 - ✅ Voice selector removed from Settings (2026-04-04) — TTS removed from chat path, selector was dead UI.
+- ✅ Multi-message trade accumulation (2026-04-08) — pending_trade in session state accumulates
+     extracted fields across voice segments. mergeExtracted() merges non-null fields. Resets on save.
+     Context window: last 4 user messages passed to Extractor for fragment resolution.
+     "took a trade and lost" → "NQ" → "1641" → complete trade saved.
+- ✅ Multi-trade drain loop (2026-04-08) — more_trades field on ExtractedData. When Extractor
+     flags more_trades=true, route.ts re-runs Extractor with [ALREADY_EXTRACTED: NQ long $5000]
+     hint. Each pass runs SaveDetector + DB insert. Max 3 trades per message (safety cap).
+     Zero extra Haiku calls on single-trade messages (95% of traffic) — gated on more_trades.
+- ✅ SaveDetector replaced with pure TypeScript (2026-04-08) — was Haiku API call, now a null check.
+     Saves ~500ms + 1 Haiku call per recorder message. Deterministic, instant, testable.
+- ✅ Extractor prompt caching (2026-04-08) — cache_control: ephemeral added. Was the only agent
+     without it. Saves input tokens on repeated calls (~40% for the largest prompt).
+- ✅ Shared Anthropic client singleton (2026-04-08) — lib/claude/client.ts getAnthropicClient().
+     All 5 Haiku agents share one SDK instance instead of creating 7 per request.
+- ✅ Context column optimization (2026-04-08) — trades queries select specific 12 columns instead
+     of SELECT *. Reduces Supabase payload (no notes, setup_type, voice_note_url, etc.).
+- ✅ Analyst logging cleanup (2026-04-08) — 5 console.logs reduced to 1 conditional. Production clean.
+- ✅ max_tokens: Extractor bumped to 250 (was 220) for more_trades + ALREADY_EXTRACTED headroom.
+- ✅ Test suite: 114/115 passing (save-detector tests now pure TS, deterministic, 10/10 in <1s.
+     1 pre-existing flaky query-analyst test — Haiku non-determinism on DOW SQL).
+- ✅ Telegram morning briefing (2026-04-08) — /api/telegram/briefing cron route. Triggers near
+     session open (NY/London/Asia) per user timezone. Haiku-generated personalized insight from
+     7-day trades + psychology + rules. Cron: vercel.json every 30min weekdays.
+     Requires: CRON_SECRET env var + Vercel Pro plan.
 - ⬜ Journal search/filter (by instrument, emotion, date range, win/loss)
 - ⬜ Tauri desktop app
 
@@ -442,7 +469,8 @@ SCRIBE (Haiku)
 - Tailwind only, no inline styles
 - try/catch always, loading + error states always
 - NEVER expose ANTHROPIC_API_KEY to frontend
-- Initialize Anthropic client INSIDE request handler not module level
+- Use getAnthropicClient() from lib/claude/client.ts — shared singleton, lazy init
+  (replaces old pattern of `new Anthropic({ apiKey })` inside each agent function)
 - Dark mode default
 - Server components default, client only when needed
 - Never hardcode trading behavior or judgment logic

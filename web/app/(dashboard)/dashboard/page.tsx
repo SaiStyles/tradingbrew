@@ -52,12 +52,15 @@ export default async function DashboardPage() {
     : '—'
   const streakColor = streakType === 'win' ? 'text-green-400' : streakType === 'loss' ? 'text-red-400' : 'text-white'
 
+  const hour = new Date().getHours()
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
+
   return (
     <div className="p-6 h-screen flex flex-col">
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-white">
-          Good morning, {profile?.name || 'Trader'} 👋
+          {greeting}, {profile?.name || 'Trader'}
         </h1>
         <p className="text-zinc-500 text-sm mt-1">
           {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}

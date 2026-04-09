@@ -1,8 +1,8 @@
-import Anthropic from '@anthropic-ai/sdk'
 import type { ExtractedData, ContextPacket, ChatMessage, ScribeOutput, ScribeParams } from '@/types/trade'
 import { ScribeOutputSchema } from '@/types/trade'
 import { parseWithSchema } from '@/lib/claude/parser'
 import { withRetry } from '@/lib/claude/retry'
+import { getAnthropicClient } from '@/lib/claude/client'
 
 const EMPTY: ScribeOutput = {
   should_write: false,
@@ -11,10 +11,8 @@ const EMPTY: ScribeOutput = {
 
 export async function runScribe(params: ScribeParams): Promise<ScribeOutput> {
   try {
-    const apiKey = process.env.ANTHROPIC_API_KEY
-    if (!apiKey) return { ...EMPTY }
-
-    const anthropic = new Anthropic({ apiKey })
+    const anthropic = getAnthropicClient()
+    if (!anthropic) return { ...EMPTY }
     const { message, buddyReply, extracted, context, recentMessages, existingMemories, tradingTimezone } = params
     const dayName = new Date().toLocaleDateString('en-US', { weekday: 'long', timeZone: tradingTimezone })
 

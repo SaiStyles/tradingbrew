@@ -25,6 +25,7 @@ interface SessionState {
   trader_portrait: string // reflect() result, refreshed each new trading day
   last_trade_id: string | null // ID of last saved trade — used to patch late fields (e.g. execution_score)
   ensureBank_called: boolean // fire-and-forget once per session, not every message
+  pending_trade: Partial<ExtractedData> | null // accumulates fields across multi-message trade descriptions
 }
 
 // ------------------------------------------------------------------
@@ -39,7 +40,28 @@ function defaultSession(): SessionState {
     trader_portrait: '',
     last_trade_id: null,
     ensureBank_called: false,
+    pending_trade: null,
   }
+}
+
+// Merge new extraction into accumulated pending_trade — non-null fields overwrite, nulls don't
+function mergeExtracted(pending: Partial<ExtractedData> | null, fresh: ExtractedData): ExtractedData {
+  if (!pending) return fresh
+  const merged = { ...fresh }
+  const fields = [
+    'instrument', 'direction', 'pnl', 'opened_at', 'closed_at',
+    'position_size', 'emotion', 'execution_score', 'followed_plan',
+    'market_condition', 'exit_reason', 'rr', 'session',
+  ] as const
+  for (const key of fields) {
+    // Keep the accumulated value if the fresh extraction didn't find anything new
+    if (merged[key] === null && pending[key] !== undefined && pending[key] !== null) {
+      (merged as Record<string, unknown>)[key] = pending[key]
+    }
+  }
+  // has_trade is true if EITHER pass detected a trade
+  if (pending.has_trade) merged.has_trade = true
+  return merged
 }
 
 // ------------------------------------------------------------------
@@ -124,6 +146,7 @@ export async function POST(request: NextRequest) {
           trader_portrait: (raw.trader_portrait as string) ?? '',
           last_trade_id: (raw.last_trade_id as string | null) ?? null,
           ensureBank_called: (raw.ensureBank_called as boolean) ?? false,
+          pending_trade: (raw.pending_trade as Partial<ExtractedData> | null) ?? null,
         }
       } catch {
         session = defaultSession()
@@ -155,7 +178,7 @@ export async function POST(request: NextRequest) {
       emotion: null, execution_score: null,
       followed_plan: null, market_condition: null,
       exit_reason: null, rr: null, session: null,
-      confirmed: false, declined: false, has_trade: false,
+      confirmed: false, declined: false, has_trade: false, more_trades: false,
       query_type: null, query_subtype: null,
     }
 
@@ -171,27 +194,50 @@ export async function POST(request: NextRequest) {
             ]))
       : Promise.resolve(session.trader_portrait || '')
 
-    const [extracted, context, freshPortrait] = await Promise.all([
-      // Recorder: lean prompt, trade fields only.
+    // Recorder: pass last 4 user messages as context so fragments ("NQ", "1641") make sense
+    const recentUserMessages = isRecorder
+      ? session.messages
+          .filter(m => m.role === 'user')
+          .map(m => m.content)
+          .slice(-4)
+      : undefined
+
+    const [rawExtracted, context, freshPortrait] = await Promise.all([
+      // Recorder: lean prompt + context window for multi-message trades.
       // Explorer: full prompt, query_type detection needed to gate QueryAnalyst.
       Promise.race([
-        runExtractor(message, tradingTimezone, isRecorder ? 'recorder' : 'explorer'),
+        runExtractor(message, tradingTimezone, isRecorder ? 'recorder' : 'explorer', recentUserMessages),
         new Promise<ExtractedData>(resolve => setTimeout(() => resolve(EXTRACTOR_EMPTY), 2000)),
       ]),
       runContext(user.id, tradingTimezone, message),
       portraitPromise,
     ])
 
+    // Recorder: merge new extraction into accumulated pending_trade
+    const extracted = isRecorder
+      ? mergeExtracted(session.pending_trade, rawExtracted)
+      : rawExtracted
+
+    // Update pending_trade in session — accumulate until a trade is saved
+    // Two gates: (1) Extractor says there's a trade, OR
+    //            (2) pending_trade already exists and new extraction has trade-relevant fields
+    if (isRecorder) {
+      const hasNewTradeFields = rawExtracted.instrument !== null || rawExtracted.pnl !== null ||
+        rawExtracted.direction !== null || rawExtracted.opened_at !== null
+      if (extracted.has_trade || (session.pending_trade && hasNewTradeFields)) {
+        session.pending_trade = extracted
+      }
+    }
+
     const traderPortrait = freshPortrait || session.trader_portrait
     if (freshPortrait) session.trader_portrait = freshPortrait
 
     console.log('[agents] extractor + context + portrait:', Date.now() - t0, 'ms', traderPortrait ? '(portrait ready)' : '(no portrait yet)')
 
-    // Step 2.5: Query Agent — explorer only, always runs.
-    // QueryAnalyst owns all routing decisions via needs_sql flag — no upstream gate needed.
-    // needs_sql:false for casual chat (cheap), needs_sql:true fires SQL execution.
+    // Step 2.5: Query Agent — explorer only, gated on Extractor's query_type detection.
+    // Saves a full Haiku call on casual chat ("hey", "thanks", "lol").
     let enrichedContext = context
-    if (isExplorer) {
+    if (isExplorer && extracted.query_type === 'historical_analysis') {
       try {
         const queryResult = await runQueryAnalyst({
           question: message,
@@ -310,7 +356,11 @@ export async function POST(request: NextRequest) {
     } = { buddyReply: '', todayObservations: [] }
 
     after(async () => {
-      // Explorer: runs when Buddy replied. Recorder: runs when a trade was captured.
+      // Gate: only call Scribe when there's substance to observe.
+      // Casual greetings ("hey", "thanks", "lol") don't need a Haiku call.
+      const hasSubstance = extracted.has_trade || extracted.emotion !== null ||
+        extracted.query_type !== null || message.split(/\s+/).length >= 5
+      if (!hasSubstance && !scribePayload.buddyReply) return
       if (!scribePayload.buddyReply && !extracted.has_trade) return
       try {
         const supabaseScribe = await createClient()
@@ -424,6 +474,7 @@ export async function POST(request: NextRequest) {
                 console.log('[buddy] trade saved:', insertedTrade?.id)
                 savedTrade = insertedTrade
                 session.last_trade_id = insertedTrade?.id ?? null
+                session.pending_trade = null // reset accumulator after successful save
                 systemMarker = {
                   role: 'user' as const,
                   content: `[SYSTEM: Trade already saved — ${td.instrument} ${td.direction} $${td.pnl} at ${td.opened_at}. Do not save this trade again under any circumstances.]`,
@@ -432,6 +483,77 @@ export async function POST(request: NextRequest) {
             } catch (e) {
               console.error('[buddy] trade save exception:', e)
               tradeInsertError = e instanceof Error ? e.message : 'unknown exception'
+            }
+          }
+
+          // ── Multi-trade drain loop (recorder only) ──────────────────────
+          // After any successful save, try one more extraction to catch additional trades.
+          // Doesn't rely on more_trades flag — always attempts, stops when Extractor returns nothing.
+          // Max 3 total trades per message (safety cap).
+          const additionalSaved: typeof savedTrade[] = []
+          if (isRecorder && savedTrade) {
+            const alreadyExtracted: string[] = [
+              `${extracted.instrument ?? '?'} ${extracted.direction ?? ''} $${extracted.pnl ?? '?'}`,
+            ]
+            for (let pass = 0; pass < 2; pass++) {
+              try {
+                const hintMessage = `[ALREADY_EXTRACTED: ${alreadyExtracted.join('; ')}]\n\n${message}`
+                console.log(`[drain-loop] pass ${pass + 1}, hint:`, hintMessage.slice(0, 120))
+                const nextExtracted = await Promise.race([
+                  runExtractor(hintMessage, tradingTimezone, 'recorder'),
+                  new Promise<ExtractedData>(resolve => setTimeout(() => resolve(EXTRACTOR_EMPTY), 5000)),
+                ])
+                console.log(`[drain-loop] pass ${pass + 1} result:`, JSON.stringify({ has_trade: nextExtracted.has_trade, instrument: nextExtracted.instrument, pnl: nextExtracted.pnl }))
+                if (!nextExtracted.has_trade || !nextExtracted.instrument) break // no more trades
+
+                // Run SaveDetector on this extraction
+                const nextSave = await runSaveDetector({ extracted: nextExtracted, tradingDate, tradingTimezone })
+                if (!nextSave.save_trade || !nextSave.trade_data) break
+
+                const ntd = nextSave.trade_data
+                if (ntd.execution_score != null) {
+                  ntd.execution_score = Math.min(10, Math.max(1, Math.round(ntd.execution_score)))
+                }
+                const nextClosedAt = ntd.closed_at ?? nowInTz(tradingTimezone)
+                const nextIncomplete = !(ntd.opened_at ?? nextExtracted.opened_at) || !(ntd.direction ?? nextExtracted.direction)
+                const nextSessionId = sessionResult.data?.id ?? null
+
+                const { data: nextInserted, error: nextInsertErr } = await supabase
+                  .from('trades')
+                  .insert({
+                    user_id: user.id,
+                    session_id: nextSessionId,
+                    instrument: ntd.instrument ?? '',
+                    direction: ntd.direction ?? null,
+                    pnl: ntd.pnl ?? null,
+                    position_size: ntd.position_size ?? null,
+                    opened_at: ntd.opened_at ?? null,
+                    closed_at: nextClosedAt,
+                    emotion_tag: normalizeEmotion(ntd.emotion_tag ?? nextExtracted.emotion ?? null),
+                    execution_score: ntd.execution_score ?? null,
+                    rr: ntd.rr ?? null,
+                    exit_reason: ntd.exit_reason ?? nextExtracted.exit_reason ?? null,
+                    session: ntd.session ?? nextExtracted.session ?? null,
+                    market_condition: nextExtracted.market_condition ?? null,
+                    notes: null,
+                    followed_plan: ntd.followed_plan ?? null,
+                    incomplete: nextIncomplete,
+                  })
+                  .select()
+                  .single()
+
+                if (nextInsertErr) {
+                  console.error('[drain-loop] trade save error:', JSON.stringify(nextInsertErr))
+                  break
+                }
+                console.log(`[drain-loop] trade ${pass + 2} saved:`, nextInserted?.id)
+                additionalSaved.push(nextInserted)
+                session.last_trade_id = nextInserted?.id ?? null
+                alreadyExtracted.push(`${nextExtracted.instrument ?? '?'} ${nextExtracted.direction ?? ''} $${nextExtracted.pnl ?? '?'}`)
+              } catch (e) {
+                console.error('[drain-loop] pass failed:', e)
+                break
+              }
             }
           }
 
@@ -515,6 +637,7 @@ export async function POST(request: NextRequest) {
             session_date: tradingDate,
             trader_portrait: session.trader_portrait,
             last_trade_id: session.last_trade_id,
+            pending_trade: session.pending_trade,
             ensureBank_called: session.ensureBank_called,
           }
           const existingId = sessionResult.data?.id
@@ -548,6 +671,7 @@ export async function POST(request: NextRequest) {
               trade_fields_found: saveResult.trade_data ? Object.keys(saveResult.trade_data) : null,
               ...(tradeInsertError ? { insert_error: tradeInsertError } : {}),
               ...(savedTrade ? { saved_trade_id: (savedTrade as { id?: string }).id } : {}),
+              ...(additionalSaved.length > 0 ? { additional_trades_saved: additionalSaved.length } : {}),
             },
           })}\n\n`))
 

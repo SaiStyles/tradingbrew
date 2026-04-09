@@ -68,7 +68,7 @@ export async function runContext(
     const fetchAll = Promise.all([
       supabase
         .from('trades')
-        .select('*')
+        .select('instrument, direction, pnl, execution_score, emotion_tag, followed_plan, session, exit_reason, mistakes, opened_at, closed_at, created_at')
         .eq('user_id', userId)
         .is('deleted_at', null)
         .gte('created_at', todayStart)
@@ -76,7 +76,7 @@ export async function runContext(
         .limit(20),
       supabase
         .from('trades')
-        .select('*')
+        .select('instrument, direction, pnl, execution_score, emotion_tag, followed_plan, session, exit_reason, mistakes, opened_at, closed_at, created_at')
         .eq('user_id', userId)
         .is('deleted_at', null)
         .gte('opened_at', sevenDaysAgo)

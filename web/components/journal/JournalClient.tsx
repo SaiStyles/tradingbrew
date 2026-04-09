@@ -278,7 +278,6 @@ export default function JournalClient({ initialTrades, initialTotal, tradingTime
     if (f) params.set('from', f)
     if (t) params.set('to', t)
     if (dir !== 'all') params.set('direction', dir)
-    params.set('include_incomplete', 'true')
     params.set('offset', String(off))
     params.set('limit', String(lim))
     return params

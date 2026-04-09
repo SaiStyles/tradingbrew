@@ -145,7 +145,11 @@ export default function BuddyChat({ buddyName }: { buddyName: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text, mode: 'recorder' }),
       })
-      if (!res.ok || !res.body) { setRecorderStatus('listening'); return }
+      if (!res.ok || !res.body) {
+        setRecorderEntries(prev => [{ text, saved: false }, ...prev].slice(0, 8))
+        setRecorderStatus('listening')
+        return
+      }
 
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
@@ -215,7 +219,11 @@ export default function BuddyChat({ buddyName }: { buddyName: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text, mode: 'explorer' }),
       })
-      if (!res.ok || !res.body) { setLoading(false); return }
+      if (!res.ok || !res.body) {
+        setMessages(prev => [...prev, { role: 'buddy', content: 'Something went wrong. Try again in a sec.', timestamp: new Date() }])
+        setLoading(false)
+        return
+      }
 
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
@@ -251,7 +259,9 @@ export default function BuddyChat({ buddyName }: { buddyName: string }) {
         }
         if (done) break
       }
-    } catch { /* handled */ }
+    } catch {
+      setMessages(prev => [...prev, { role: 'buddy', content: 'Connection dropped. Try again.', timestamp: new Date() }])
+    }
     finally { setLoading(false) }
   }
 
@@ -403,7 +413,7 @@ export default function BuddyChat({ buddyName }: { buddyName: string }) {
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
+              <div className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm whitespace-pre-wrap ${
                 msg.role === 'user'
                   ? 'bg-blue-600 text-white rounded-br-sm'
                   : 'bg-zinc-800 text-zinc-100 rounded-bl-sm'

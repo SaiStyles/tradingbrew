@@ -29,7 +29,7 @@ describe('Scribe — direct output tests', () => {
         instrument: 'ES', direction: 'long', pnl: -180,
         opened_at: '2026-03-24T14:30:00-04:00', closed_at: '2026-03-24T14:48:00-04:00',
         position_size: null, emotion: 'FOMO', execution_score: null,
-        followed_plan: false, confirmed: false, declined: false, has_trade: true,
+        followed_plan: false, confirmed: false, declined: false, has_trade: true, more_trades: false,
         market_condition: null, exit_reason: null, rr: null, session: null, query_type: null, query_subtype: null,
       },
       context: {
@@ -85,7 +85,7 @@ describe('Scribe — direct output tests', () => {
         instrument: 'NQ', direction: 'long', pnl: -320,
         opened_at: '2026-03-24T10:15:00-04:00', closed_at: '2026-03-24T10:34:00-04:00',
         position_size: null, emotion: 'FOMO', execution_score: 3,
-        followed_plan: false, confirmed: false, declined: false, has_trade: true,
+        followed_plan: false, confirmed: false, declined: false, has_trade: true, more_trades: false,
         market_condition: null, exit_reason: null, rr: null, session: null, query_type: null, query_subtype: null,
       },
       context: {
@@ -113,7 +113,7 @@ describe('Scribe — direct output tests', () => {
         instrument: 'NQ', direction: 'short', pnl: -450,
         opened_at: '2026-03-24T09:30:00-04:00', closed_at: null,
         position_size: null, emotion: 'FOMO', execution_score: null,
-        followed_plan: null, confirmed: false, declined: false, has_trade: true,
+        followed_plan: null, confirmed: false, declined: false, has_trade: true, more_trades: false,
         market_condition: null, exit_reason: null, rr: null, session: null, query_type: null, query_subtype: null,
       },
       context: {

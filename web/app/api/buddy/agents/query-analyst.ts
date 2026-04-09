@@ -1,8 +1,8 @@
-import Anthropic from '@anthropic-ai/sdk'
 import type { QueryAnalystParams, QueryAnalystOutput } from '@/types/trade'
 import { QueryAnalystOutputSchema } from '@/types/trade'
 import { parseWithSchema } from '@/lib/claude/parser'
 import { withRetry } from '@/lib/claude/retry'
+import { getAnthropicClient } from '@/lib/claude/client'
 
 const SCHEMA = `
 QUERYABLE TABLES:
@@ -92,10 +92,8 @@ export async function runQueryAnalyst(params: QueryAnalystParams): Promise<Query
   const { question, tradingTimezone, currentDate } = params
 
   try {
-    const apiKey = process.env.ANTHROPIC_API_KEY
-    if (!apiKey) return { sql: null, query_description: question, needs_sql: false }
-
-    const anthropic = new Anthropic({ apiKey })
+    const anthropic = getAnthropicClient()
+    if (!anthropic) return { sql: null, query_description: question, needs_sql: false }
 
     const staticSystem = `You are a SQL query generator for a trading journal.
 

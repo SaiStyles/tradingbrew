@@ -14,15 +14,17 @@ export default function RegisterPage() {
   const router = useRouter()
   const supabase = createClient()
 
-  const handleRegister = async () => {
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!name.trim() || !email.trim() || !password) return
     setLoading(true)
     setError('')
 
     const { error } = await supabase.auth.signUp({
-      email,
+      email: email.trim(),
       password,
       options: {
-        data: { name }
+        data: { name: name.trim() }
       }
     })
 
@@ -52,7 +54,7 @@ export default function RegisterPage() {
             </div>
           )}
 
-          <div className="space-y-4">
+          <form onSubmit={handleRegister} className="space-y-4">
             <div>
               <label className="text-zinc-400 text-sm mb-2 block">Name</label>
               <input
@@ -60,6 +62,7 @@ export default function RegisterPage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="John"
+                autoComplete="name"
                 className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-lg px-4 py-3 text-sm outline-none focus:border-blue-500 transition"
               />
             </div>
@@ -71,6 +74,7 @@ export default function RegisterPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
+                autoComplete="email"
                 className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-lg px-4 py-3 text-sm outline-none focus:border-blue-500 transition"
               />
             </div>
@@ -82,18 +86,19 @@ export default function RegisterPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
+                autoComplete="new-password"
                 className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-lg px-4 py-3 text-sm outline-none focus:border-blue-500 transition"
               />
             </div>
 
             <button
-              onClick={handleRegister}
-              disabled={loading}
+              type="submit"
+              disabled={loading || !name.trim() || !email.trim() || !password}
               className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-lg py-3 text-sm transition mt-2"
             >
               {loading ? 'Creating account...' : 'Create account'}
             </button>
-          </div>
+          </form>
 
           <p className="text-zinc-500 text-sm text-center mt-6">
             Already have an account?{' '}

@@ -49,10 +49,10 @@ export default function OnboardingPage() {
     }).eq('id', user.id)
 
     if (data.max_trades_day || data.max_daily_loss || data.max_risk_per_trade) {
-      const rules = []
-      if (data.max_trades_day) rules.push({ user_id: user.id, rule_type: 'max_trades_day', value: Number(data.max_trades_day) })
-      if (data.max_daily_loss) rules.push({ user_id: user.id, rule_type: 'max_daily_loss', value: Number(data.max_daily_loss) })
-      if (data.max_risk_per_trade) rules.push({ user_id: user.id, rule_type: 'max_risk_per_trade', value: Number(data.max_risk_per_trade) })
+      const rules: { user_id: string; raw_text: string; is_active: boolean }[] = []
+      if (data.max_trades_day) rules.push({ user_id: user.id, raw_text: `Max ${data.max_trades_day} trades per day`, is_active: true })
+      if (data.max_daily_loss) rules.push({ user_id: user.id, raw_text: `Max daily loss $${data.max_daily_loss}`, is_active: true })
+      if (data.max_risk_per_trade) rules.push({ user_id: user.id, raw_text: `Max risk per trade $${data.max_risk_per_trade}`, is_active: true })
       if (rules.length) await supabase.from('rules').insert(rules)
     }
 

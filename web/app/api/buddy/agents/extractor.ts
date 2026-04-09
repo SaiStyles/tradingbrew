@@ -1,9 +1,9 @@
-import Anthropic from '@anthropic-ai/sdk'
 import type { ExtractedData } from '@/types/trade'
 import { ExtractedDataSchema } from '@/types/trade'
 import { getISOOffset, getTodayInTz } from '../timezone'
 import { parseWithSchema } from '@/lib/claude/parser'
 import { withRetry } from '@/lib/claude/retry'
+import { getAnthropicClient } from '@/lib/claude/client'
 
 const FAILED: ExtractedData = {
   instrument: null, direction: null, pnl: null,
@@ -12,20 +12,19 @@ const FAILED: ExtractedData = {
   emotion: null, execution_score: null,
   followed_plan: null, market_condition: null,
   exit_reason: null, rr: null, session: null,
-  confirmed: false, declined: false, has_trade: false,
+  confirmed: false, declined: false, has_trade: false, more_trades: false,
   query_type: null, query_subtype: null,
 }
 
 export async function runExtractor(
   message: string,
   tradingTimezone: string,
-  mode: 'recorder' | 'explorer' = 'explorer'
+  mode: 'recorder' | 'explorer' = 'explorer',
+  recentContext?: string[], // last few user messages for multi-message trade accumulation
 ): Promise<ExtractedData> {
   try {
-    const apiKey = process.env.ANTHROPIC_API_KEY
-    if (!apiKey) return { ...FAILED }
-
-    const anthropic = new Anthropic({ apiKey })
+    const anthropic = getAnthropicClient()
+    if (!anthropic) return { ...FAILED }
     const today = getTodayInTz(tradingTimezone)
     const offset = getISOOffset(tradingTimezone)
 
@@ -33,29 +32,33 @@ export async function runExtractor(
     // Explorer: full prompt — field extraction + query_type/subtype for analytics routing
     const systemPrompt = mode === 'recorder'
       ? `You are a trade data extractor for a voice trading recorder.
-Extract fields from a single voice utterance. Return ONLY valid JSON.
+Traders describe trades across multiple voice segments. You may see RECENT CONTEXT (prior segments) plus the CURRENT MESSAGE.
+Combine information from both to extract the most complete picture. Return ONLY valid JSON.
 
 Today: ${today} | UTC offset: ${offset}
 Time format: ${today}T09:30:00${offset} — never append Z.
 If AM/PM not stated, assume AM for US market hours (9:30 = 09:30).
 
 Return this exact structure:
-{"instrument":null,"direction":null,"pnl":null,"opened_at":null,"closed_at":null,"position_size":null,"emotion":null,"execution_score":null,"followed_plan":null,"market_condition":null,"exit_reason":null,"rr":null,"session":null,"confirmed":false,"declined":false,"has_trade":false,"query_type":null,"query_subtype":null}
+{"instrument":null,"direction":null,"pnl":null,"opened_at":null,"closed_at":null,"position_size":null,"emotion":null,"execution_score":null,"followed_plan":null,"market_condition":null,"exit_reason":null,"rr":null,"session":null,"confirmed":false,"declined":false,"has_trade":false,"more_trades":false,"query_type":null,"query_subtype":null}
 
 Rules:
 - instrument: ticker only (NQ, ES, AAPL)
 - direction: "long" or "short" only
-- pnl: number. Stated PnL wins. "made $400"=400, "lost $200"=-200.
+- pnl: number. Stated PnL wins. "made $400"=400, "lost $200"=-200. A bare number after context like "I lost" or "I made" is the PnL.
 - emotion: confident/hesitant/FOMO/revenge/bored/calm/frustrated/euphoric
 - execution_score: 1-10 integer
 - followed_plan: true="followed it/disciplined/as planned", false="revenge/impulsive/shouldn't have", null=not mentioned
-- has_trade: true if describes a completed trade (needs instrument OR pnl OR direction). "thinking about NQ"=false. "took NQ long"=true.
+- has_trade: true if the message or context describes ANY trade activity — entered, exited, took, closed, bought, sold, lost money, made money, won, shorted, went long. Does NOT need specific numbers or instruments. "took a trade and lost"=true. "made some money"=true. "went long NQ"=true. "thinking about trading"=false. "NQ is moving"=false. If RECENT CONTEXT describes a trade and CURRENT adds info (ticker, number, direction) — has_trade is true.
+- more_trades: true if the message describes MORE THAN ONE distinct trade. "NQ made 5000, also ES lost 2000"=true. "NQ made 5000"=false.
 - market_condition: trending/choppy/news-driven/range if described, else null
 - exit_reason: map to exact value — "Target hit" (hit target/TP/profit target), "Breakeven" (BE/moved to break even/scratched), "Stop out" (stopped out/hit stop/SL), "Manual exit" (closed manually/took it off/exited early), "Time stop" (time-based/ran out of time/market close), "Trailing stop" (trailing stop), "News/event" (news spike/before/after event). null if not mentioned.
 - rr: risk/reward as stated. "2:1"="2:1", "2R"="2R", "risked 50 made 100"="2:1". Free text, capture as spoken. null if not mentioned.
 - session: "london" (London/EU/European session, 3-8am ET), "new_york" (NY/US/American session, 9:30am-4pm ET), "asia" (Asia/Tokyo/Asian session, 8pm-3am ET), "overlap" (London-NY overlap, 8-10am ET). Infer from time if session not named. null if unclear.
 - confirmed/declined/query_type/query_subtype: always false/false/null/null
-- MULTIPLE TRADES: if multiple trades are described, extract only the FIRST trade mentioned. Ignore the rest.`
+- MULTIPLE TRADES: if multiple trades are described, extract the FIRST trade only. Set more_trades=true so the system knows to extract the rest.
+- ALREADY_EXTRACTED: if the message contains "[ALREADY_EXTRACTED: ...]", skip those trades and extract the NEXT unextracted trade. If no more trades remain, return has_trade=false and more_trades=false.
+- FRAGMENTS: If the current message is a fragment (just a number, just a ticker, just "long"), use context to understand what it means. "1641" after "I lost on NQ" means pnl: -1641.`
       : `You are a data extractor for a trading journal.
 Extract trading information from the user message.
 Return ONLY valid JSON. No explanation. No conversation. Just the JSON object.
@@ -71,7 +74,7 @@ When extracting times:
 - If AM/PM not stated, infer from context (9:30 = 09:30 AM for US markets).
 
 Return this exact JSON structure:
-{"instrument":null,"direction":null,"pnl":null,"opened_at":null,"closed_at":null,"position_size":null,"emotion":null,"execution_score":null,"followed_plan":null,"market_condition":null,"exit_reason":null,"rr":null,"session":null,"confirmed":false,"declined":false,"has_trade":false,"query_type":null,"query_subtype":null}
+{"instrument":null,"direction":null,"pnl":null,"opened_at":null,"closed_at":null,"position_size":null,"emotion":null,"execution_score":null,"followed_plan":null,"market_condition":null,"exit_reason":null,"rr":null,"session":null,"confirmed":false,"declined":false,"has_trade":false,"more_trades":false,"query_type":null,"query_subtype":null}
 
 Field rules:
 - instrument: ticker symbol only (NQ, ES, AAPL, etc.)
@@ -89,14 +92,20 @@ Field rules:
 - exit_reason: map to exact value — "Target hit" (hit target/TP/profit target), "Breakeven" (BE/moved to break even/scratched), "Stop out" (stopped out/hit stop/SL), "Manual exit" (closed manually/took it off/exited early), "Time stop" (time-based/ran out of time/market close), "Trailing stop" (trailing stop), "News/event" (news spike/before/after event). null if not mentioned.
 - rr: risk/reward as stated. "2:1"="2:1", "2R"="2R", "risked 50 made 100"="2:1". Free text, capture as spoken. null if not mentioned.
 - session: "london" (London/EU/European session, 3-8am ET), "new_york" (NY/US/American session, 9:30am-4pm ET), "asia" (Asia/Tokyo/Asian session, 8pm-3am ET), "overlap" (London-NY overlap, 8-10am ET). Infer from time if session not named. null if unclear.
-- MULTIPLE TRADES: if multiple trades are described, extract only the FIRST trade mentioned. Ignore the rest.`
+- more_trades: true ONLY if the message describes MORE THAN ONE trade. "NQ made 5000, also ES lost 2000"=true. Single trade=false.
+- MULTIPLE TRADES: if multiple trades are described, extract the FIRST trade only. Set more_trades=true so the system knows to extract the rest.`
+
+    // For recorder mode: include recent context so fragments like "NQ" or "1641" make sense
+    const userContent = (mode === 'recorder' && recentContext && recentContext.length > 0)
+      ? `RECENT CONTEXT (prior voice segments):\n${recentContext.map(m => `> ${m}`).join('\n')}\n\nCURRENT MESSAGE:\n${message}`
+      : message
 
     const result = await withRetry(() => anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 220,
-      system: systemPrompt,
+      max_tokens: 250,
+      system: [{ type: 'text' as const, text: systemPrompt, cache_control: { type: 'ephemeral' as const } }],
       messages: [
-        { role: 'user', content: message },
+        { role: 'user', content: userContent },
         { role: 'assistant', content: '{' },
       ],
     }))

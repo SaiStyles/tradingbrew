@@ -93,7 +93,6 @@ export async function GET(request: NextRequest) {
     const to = searchParams.get('to')
     const limit = Math.min(parseInt(searchParams.get('limit') ?? '20', 10), 100)
     const offset = parseInt(searchParams.get('offset') ?? '0', 10)
-    const includeIncomplete = searchParams.get('include_incomplete') === 'true'
     const direction = searchParams.get('direction') as 'long' | 'short' | null
 
     let query = supabase
@@ -115,10 +114,6 @@ export async function GET(request: NextRequest) {
     }
     if (direction && (direction === 'long' || direction === 'short')) {
       query = query.eq('direction', direction)
-    }
-    if (!includeIncomplete) {
-      // By default show all trades (complete and incomplete)
-      // Only filter them out if explicitly requested
     }
 
     const { data: trades, count, error } = await query

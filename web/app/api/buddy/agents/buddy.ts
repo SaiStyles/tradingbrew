@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { BuddyParams } from '@/types/trade'
 import { withRetry } from '@/lib/claude/retry'
+import { getAnthropicClient } from '@/lib/claude/client'
 
 // ── Build the full API request params ────────────────────────────────────
 // Shared between runBuddy (tests / fallback) and createBuddyStream (route)
@@ -198,10 +199,9 @@ ${historicalQueryStr ? `\n${historicalQueryStr}` : ''}`
 // ── Non-streaming: used by tests and as fallback ──────────────────────────
 export async function runBuddy(params: BuddyParams): Promise<string> {
   try {
-    const apiKey = process.env.ANTHROPIC_API_KEY
-    if (!apiKey) return "Give me a second..."
+    const anthropic = getAnthropicClient()
+    if (!anthropic) return "Give me a second..."
 
-    const anthropic = new Anthropic({ apiKey })
     const result = await withRetry(() => anthropic.messages.create(buildBuddyApiParams(params)))
 
     return result.content[0].type === 'text' ? result.content[0].text.trim() : "Give me a second..."
@@ -214,9 +214,8 @@ export async function runBuddy(params: BuddyParams): Promise<string> {
 // ── Streaming: used by route.ts for real-time token delivery ─────────────
 // Returns the Anthropic MessageStream, or null if no API key
 export function createBuddyStream(params: BuddyParams): AsyncIterable<Anthropic.MessageStreamEvent> | null {
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) return null
+  const anthropic = getAnthropicClient()
+  if (!anthropic) return null
 
-  const anthropic = new Anthropic({ apiKey })
   return anthropic.messages.stream(buildBuddyApiParams(params))
 }

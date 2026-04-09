@@ -24,6 +24,7 @@ export interface ExtractedData {
   confirmed: boolean
   declined: boolean
   has_trade: boolean
+  more_trades: boolean
   query_type: 'historical_analysis' | null
   query_subtype: 'data' | 'psychology' | 'both' | null
 }
@@ -245,6 +246,7 @@ export const ExtractedDataSchema = z.object({
   confirmed: z.boolean(),
   declined: z.boolean(),
   has_trade: z.boolean(),
+  more_trades: z.boolean().default(false),
   query_type: z.literal('historical_analysis').nullable(),
   query_subtype: z.enum(['data', 'psychology', 'both']).nullable(),
 })

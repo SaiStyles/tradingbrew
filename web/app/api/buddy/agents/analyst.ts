@@ -1,8 +1,8 @@
-import Anthropic from '@anthropic-ai/sdk'
 import type { ExtractedData, ContextPacket, AnalystReport } from '@/types/trade'
 import { AnalystReportSchema } from '@/types/trade'
 import { parseWithSchema } from '@/lib/claude/parser'
 import { withRetry } from '@/lib/claude/retry'
+import { getAnthropicClient } from '@/lib/claude/client'
 
 const EMPTY: AnalystReport = {
   violations: [],
@@ -18,10 +18,8 @@ export async function runAnalyst(
   context: ContextPacket,
 ): Promise<AnalystReport> {
   try {
-    const apiKey = process.env.ANTHROPIC_API_KEY
-    if (!apiKey) return { ...EMPTY }
-
-    const anthropic = new Anthropic({ apiKey })
+    const anthropic = getAnthropicClient()
+    if (!anthropic) return { ...EMPTY }
 
     const todaysTrades = context.todaysTrades.length > 0
       ? JSON.stringify(context.todaysTrades.map(t => ({ instrument: t.instrument, direction: t.direction, pnl: t.pnl, execution_score: t.execution_score, emotion_tag: t.emotion_tag, followed_plan: t.followed_plan, session: t.session, exit_reason: t.exit_reason, mistakes: t.mistakes, opened_at: t.opened_at, closed_at: t.closed_at })))
@@ -82,9 +80,7 @@ ${propFirmAccount}
 HISTORICAL PATTERNS:
 ${memories}`
 
-    console.log('[analyst] extracted received:', JSON.stringify(extracted))
-    console.log('[analyst] input size:', userContent.length, 'chars | model: claude-haiku-4-5-20251001')
-    console.log('[analyst] calling claude...')
+    console.log('[analyst] calling claude, input:', userContent.length, 'chars')
 
     const result = await withRetry(() => anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
@@ -96,14 +92,10 @@ ${memories}`
       ],
     }))
 
-    console.log('[analyst] claude responded')
-
-    // Prepend '{' because we prefilled the assistant turn with '{' — Claude's response starts after it
     const raw = result.content[0].type === 'text' ? '{' + result.content[0].text : ''
-    console.log('[analyst] raw output:', raw.slice(0, 500))
     const parsed = parseWithSchema(raw, AnalystReportSchema)
     if (!parsed) return { ...EMPTY }
-    console.log('[analyst] parsed violations:', JSON.stringify(parsed.violations))
+    if (parsed.violations.length > 0) console.log('[analyst] violations:', parsed.violations.length)
     return parsed
   } catch (e) {
     console.error('[analyst] failed:', e)
