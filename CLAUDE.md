@@ -67,7 +67,6 @@ Nobody wants to talk to AI. They want to talk to limbo — and have limbo quietl
 - NEVER real celebrity voice cloning — legal risk. "Jack Sparrow voice" = stylistic approximation, not Johnny Depp
 - Buddy name customizable → users.buddy_name
 - Viral hook: combo of character voice + character text = screenshot moments ("greed is good, but that stop loss wasn't")
-- Low cost (Haiku) = low barrier = big user base = acquisition proof for firm sales
 
 ## Voice Design — Recorder Only
 - Recorder has vintage tape reel animation — circles when speech detected
@@ -82,15 +81,6 @@ Nobody wants to talk to AI. They want to talk to limbo — and have limbo quietl
 - lib/voice/silenceDetector.ts — DELETED. lib/voice/getMimeType.ts — DELETED.
 - Voice selector in Settings: deprecated (no TTS output to select for)
 
-## Pricing
-- Launch: FREE — build users first
-- Later: Free (30 trades) | Pro $19/month (unlimited + all features)
-
-## Acquisition Target
-- Buyers: Tradovate, Apex, TopStep, TradingView
-- Minimum price: $10M
-- Trigger: 2000+ DAU with retention data
-- Strategy: approach 3-5 buyers simultaneously
 
 ## Project Structure
 ```
