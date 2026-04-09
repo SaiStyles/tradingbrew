@@ -1,6 +1,6 @@
 # TradingBrew
 
-> **~95% done. Core is built. Contributions welcome.**
+> **~90% done. Core is built. Contributions welcome.**
 
 **Just speak. We handle the rest.**
 
