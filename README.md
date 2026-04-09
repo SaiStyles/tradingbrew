@@ -97,7 +97,7 @@ This is where someone could take it from working prototype to real product. List
 - **Database**: Supabase (PostgreSQL + Storage + Auth)
 - **AI**: Anthropic Claude Haiku (5 agents), OpenAI Whisper (STT)
 - **Voice**: Silero VAD WASM (`@ricky0123/vad-web`) + OpenAI Whisper
-- **Memory**: Hindsight gen2 (vectorize.io) — optional, app works without it
+- **Memory**: Hindsight gen2 (vectorize.io) — optional, but strongly recommended for the full experience
 - **Messaging**: Telegram Bot API
 - **Deployment**: Vercel (or any Node.js host)
 
